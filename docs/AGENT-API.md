@@ -87,3 +87,16 @@ restart. Read docs/MODDING.md first.
   Chrome visitor pays (D3D11/FXC), so run `advise` before publishing.
 - Test a performance theory with one measurement before acting on it.
 - Publishing to glslop.com stays with the human. The studio has no publish tool by default.
+
+## Testing the app from an agent
+
+Environment variables for running a disposable copy of the app:
+
+| Variable | Effect |
+|---|---|
+| `GLSLOP_STUDIO_HOME` | Use this folder instead of `~/.glslop-studio` (settings, cache, mods, `bridge.json`). |
+| `GLSLOP_STUDIO_NO_BROWSER=1` | `account.signIn` doesn't open the default browser. Read the sign-in URL from `studio.state.authUrl` (or the `auth:url` event) and open it in your own browser. |
+| `GLSLOP_STUDIO_SIGNIN_WAIT_S` | How long sign-in waits for the browser (default 600). Short values test the "sign-in expired" page. |
+
+Point a test copy at a local glslop dev server with `{"glslopBase": "http://127.0.0.1:4399"}` in its
+`settings.json`. Sign-ins are stored per server, so this never touches a real glslop.com login.

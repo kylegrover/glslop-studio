@@ -15,9 +15,14 @@
   let account = $state<{ signedIn: boolean; handle: string | null }>(studio.state.account ?? { signedIn: false, handle: null });
   let update = $state<any>(studio.state.update ?? null);
   let signingIn = $state(false);
+  // Clicking again while waiting starts a fresh attempt (the old browser page then says it expired).
+  let signInSeq = 0;
   async function signIn() {
+    const mine = ++signInSeq;
     signingIn = true;
-    try { await studio.call('account.signIn', {}, { caller: 'ui' }); } finally { signingIn = false; }
+    try { await studio.call('account.signIn', {}, { caller: 'ui' }); }
+    catch { /* shown as a toast by tool:error */ }
+    finally { if (mine === signInSeq) signingIn = false; }
   }
   let slot: HTMLElement;
   let cleanup: (() => void) | void;
@@ -57,7 +62,7 @@
       studio.events.on('update:available', (u) => (update = u)),
       studio.events.on('tool:progress', ({ msg }) => (progress = msg)),
       studio.events.on('tool:after', () => (progress = '')),
-      studio.events.on('tool:error', ({ name, error, caller }) => { progress = ''; if (caller === 'ui') studio.toast(`${name}: ${error}`, 'error'); }),
+      studio.events.on('tool:error', ({ name, error, caller }) => { progress = ''; if (caller === 'ui' && !/a newer one was started/.test(error)) studio.toast(`${name}: ${error}`, 'error'); }),
     ];
     const onKey = (e: KeyboardEvent) => {
       if ((e.altKey && e.key === 'ArrowLeft') || (e.key === 'Backspace' && !(e.target as HTMLElement).closest('input,textarea,select,[contenteditable]'))) { e.preventDefault(); back(); return; }
@@ -88,7 +93,7 @@
         {#if update}<button class="upd" title={update.notes ?? ''} onclick={() => studio.call('app.checkUpdate', { install: true }, { caller: 'ui' })}>⬆ update {update.version}</button>{/if}
         {#if studio.host.kind === 'tauri'}
           {#if account.signedIn}<button class="acct" title="signed in to glslop" onclick={() => studio.host.open(`${studio.state.corpus?.base ?? 'https://glslop.com'}/u/${account.handle}`)}>@{account.handle}</button>
-          {:else}<button onclick={signIn} disabled={signingIn}>{signingIn ? 'waiting for browser…' : 'login'}</button>{/if}
+          {:else}<button onclick={signIn} title={signingIn ? 'finish in your browser, or click to open a fresh sign-in page' : 'sign in with glslop'}>{signingIn ? 'waiting for browser… (retry)' : 'login'}</button>{/if}
         {/if}
       </nav>
     </div>

@@ -16,6 +16,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -28,7 +29,15 @@ const KEYRING_SERVICE: &str = "glslop-studio";
 pub struct AuthState {
     access: Mutex<HashMap<String, (String, Instant)>>, // origin -> (token, expiry)
     handle: Mutex<HashMap<String, String>>,            // origin -> handle
+    /// Bumped by every sign-in; an older attempt that sees a newer number stops waiting.
+    attempt: std::sync::Arc<AtomicU64>,
 }
+
+/// How long the app waits for the browser. Logging in to glslop first can take a few minutes.
+const SIGN_IN_WAIT: Duration = Duration::from_secs(600);
+/// After giving up, keep answering the old callback port with an "expired" page for this long, so a
+/// late "allow" gets a clear message instead of the browser's own connection-refused error.
+const EXPIRED_GRACE: Duration = Duration::from_secs(3600);
 
 #[derive(Serialize)]
 pub struct AuthStatus {
@@ -119,7 +128,56 @@ fn access_token(state: &AuthState, base: &str) -> Result<String, String> {
     }
 }
 
-const DONE_PAGE: &str = "<!doctype html><meta charset=utf-8><title>glslop studio</title><body style=\"font:16px ui-monospace,monospace;background:#c4c2b4;padding:40px\"><h1 style=\"font-family:Times,serif\">signed in ✓</h1><p>you can close this tab and go back to glslop studio.</p>";
+/// The small page the browser shows after the redirect back to the app.
+fn page(title: &str, body: &str) -> String {
+    let html = format!("<!doctype html><meta charset=utf-8><title>glslop studio</title><body style=\"font:16px ui-monospace,monospace;background:#c4c2b4;padding:40px;max-width:640px\"><h1 style=\"font-family:Times,serif\">{title}</h1><p>{body}</p>");
+    format!("HTTP/1.1 200 OK
+content-type: text/html; charset=utf-8
+content-length: {}
+cache-control: no-store
+connection: close
+
+{}", html.len(), html)
+}
+
+/// Read one HTTP request from the loopback socket and return its path + query, if it's /callback.
+fn read_callback(sock: &mut std::net::TcpStream) -> Option<HashMap<String, String>> {
+    sock.set_nonblocking(false).ok();
+    sock.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    let mut buf = [0u8; 8192];
+    let n = sock.read(&mut buf).unwrap_or(0);
+    let req = String::from_utf8_lossy(&buf[..n]);
+    let path = req.split_whitespace().nth(1).unwrap_or("/");
+    let u = url::Url::parse(&format!("http://127.0.0.1{path}")).ok()?;
+    if u.path() != "/callback" {
+        let _ = sock.write_all(b"HTTP/1.1 404 Not Found
+content-length: 0
+connection: close
+
+");
+        return None;
+    }
+    Some(u.query_pairs().into_owned().collect())
+}
+
+/// The app stopped waiting (timed out, or a newer sign-in started). Keep the port answering for a
+/// while with an explanation, then let it go.
+fn serve_expired(listener: TcpListener, reason: &'static str) {
+    std::thread::spawn(move || {
+        let until = Instant::now() + EXPIRED_GRACE;
+        while Instant::now() < until {
+            match listener.accept() {
+                Ok((mut sock, _)) => {
+                    if read_callback(&mut sock).is_some() {
+                        let _ = sock.write_all(page("this sign-in expired", &format!("{reason} Nothing was signed in. Go back to glslop studio and click <b>login</b> again; it opens a fresh page.")).as_bytes());
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(200)),
+                Err(_) => return,
+            }
+        }
+    });
+}
 
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
@@ -147,16 +205,29 @@ pub async fn auth_sign_in(app: tauri::AppHandle, state: tauri::State<'_, AuthSta
     use tauri_plugin_opener::OpenerExt;
     // Also announced to the UI so "browser didn't open?" can show a copyable link.
     let _ = app.emit("auth:url", url.as_str());
-    app.opener().open_url(url.as_str(), None::<&str>).map_err(|e| e.to_string())?;
+    // GLSLOP_STUDIO_NO_BROWSER=1: don't open the default browser; whoever drives the app (a test, an
+    // agent with its own browser) takes the URL from the auth:url event / studio.state.authUrl instead.
+    if std::env::var_os("GLSLOP_STUDIO_NO_BROWSER").is_none() {
+        app.opener().open_url(url.as_str(), None::<&str>).map_err(|e| e.to_string())?;
+    }
 
-    // Wait (off the async runtime) for the browser to come back, up to 5 minutes.
+    // Wait (off the async runtime) for the browser to come back. A newer sign-in supersedes this one.
+    let attempts = state.attempt.clone();
+    let mine = attempts.fetch_add(1, Ordering::SeqCst) + 1;
     let code = tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
         // Non-blocking accept + polling, so the deadline fires even if the browser never comes back.
         listener.set_nonblocking(true).map_err(|e| e.to_string())?;
-        let deadline = Instant::now() + Duration::from_secs(300);
+        // GLSLOP_STUDIO_SIGNIN_WAIT_S shortens the wait, for testing the timeout.
+        let wait = std::env::var("GLSLOP_STUDIO_SIGNIN_WAIT_S").ok().and_then(|v| v.parse().ok()).map(Duration::from_secs).unwrap_or(SIGN_IN_WAIT);
+        let deadline = Instant::now() + wait;
         loop {
+            if attempts.load(Ordering::SeqCst) != mine {
+                serve_expired(listener, "A newer sign-in was started from the app, so this one was cancelled.");
+                return Err("sign-in cancelled: a newer one was started".into());
+            }
             if Instant::now() > deadline {
-                return Err("sign-in timed out".into());
+                serve_expired(listener, "The app stopped waiting for this sign-in.");
+                return Err("sign-in timed out. Click login to try again.".into());
             }
             let mut sock = match listener.accept() {
                 Ok((s, _)) => s,
@@ -166,28 +237,16 @@ pub async fn auth_sign_in(app: tauri::AppHandle, state: tauri::State<'_, AuthSta
                 }
                 Err(e) => return Err(e.to_string()),
             };
-            sock.set_nonblocking(false).ok();
-            sock.set_read_timeout(Some(Duration::from_secs(5))).ok();
-            let mut buf = [0u8; 8192];
-            let n = sock.read(&mut buf).unwrap_or(0);
-            let req = String::from_utf8_lossy(&buf[..n]);
-            let path = req.split_whitespace().nth(1).unwrap_or("/");
-            let u = url::Url::parse(&format!("http://127.0.0.1{path}")).map_err(|e| e.to_string())?;
-            if u.path() != "/callback" {
-                let _ = sock.write_all(b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\n\r\n");
-                continue;
-            }
-            let q: std::collections::HashMap<_, _> = u.query_pairs().into_owned().collect();
-            let page = |msg: &str| format!("HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}", msg.len(), msg);
+            let Some(q) = read_callback(&mut sock) else { continue };
             if q.get("state") != Some(&csrf) {
-                let _ = sock.write_all(page("state mismatch — try signing in again from the app").as_bytes());
-                return Err("state mismatch".into());
+                let _ = sock.write_all(page("sign-in didn't match", "This page belongs to a different sign-in attempt. Go back to glslop studio and click <b>login</b> again.").as_bytes());
+                continue; // a stray old tab must not cancel the live attempt
             }
             if let Some(err) = q.get("error") {
-                let _ = sock.write_all(page(&format!("sign-in cancelled ({}). you can close this tab.", html_escape(err))).as_bytes());
-                return Err(err.clone());
+                let _ = sock.write_all(page("sign-in cancelled", &format!("({}) Nothing was signed in. You can close this tab.", html_escape(err))).as_bytes());
+                return Err(format!("sign-in cancelled ({err})"));
             }
-            let _ = sock.write_all(page(DONE_PAGE).as_bytes());
+            let _ = sock.write_all(page("signed in ✓", "You can close this tab and go back to glslop studio.").as_bytes());
             return q.get("code").cloned().ok_or_else(|| "no code".to_string());
         }
     })
