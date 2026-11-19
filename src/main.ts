@@ -29,6 +29,7 @@ const CORE: Record<string, StudioMod> = { corpus, gl, thumbs, live, bench, advis
 async function boot() {
   const bootT0 = performance.now();
   const host = await initHost();
+  document.documentElement.classList.add(`os-${host.boot.platform}`); // e.g. os-linux, for platform CSS
   const studio = new Studio();
   (window as any).studio = studio;
   (studio as any).coreMods = CORE;

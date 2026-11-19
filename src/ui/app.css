@@ -16,3 +16,8 @@ input[type=text], input:not([type]), select { border: 2px inset #cfcdbf; padding
 .unk { background: transparent; }
 h2 { margin: 14px 0 4px; }
 h3 { margin: 10px 0 4px; font-family: var(--mono); font-size: 13px; letter-spacing: 0; }
+
+/* Linux (WebKitGTK) repaints the body's 1px scanline gradient across the whole window on every scroll
+   frame: ~500 ms per frame on the slaptop (GTX 1060). Without it, scrolling runs at ~58 ms. The cell
+   rotation costs ~40 ms more but is the glslop look, so it stays. html.os-linux is set in main.ts. */
+html.os-linux body { background-image: none; }
