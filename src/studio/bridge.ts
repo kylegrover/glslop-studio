@@ -22,6 +22,8 @@ export async function startBridge(studio: Studio): Promise<void> {
     }
     await host.invoke!('bridge_reply', { id, result: reply });
   });
+  // Rust holds incoming calls until this arrives, so a call made right after launch isn't lost.
+  await host.invoke('bridge_ready');
 }
 
 function jsonSafe(v: unknown): unknown {

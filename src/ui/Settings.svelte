@@ -50,6 +50,7 @@
     seconds to minutes to compile. Vulkan (and desktop GL) skip FXC. Changing this relaunches the app. Windows only; macOS always uses Metal.</p>
   <div class="row">
     <select bind:value={backend} disabled={boot.platform !== 'windows'}>
+      {#if boot.platform !== 'windows'}<option value={boot.angleBackend}>{boot.angleBackend}</option>{/if}
       <option value="vulkan">vulkan</option>
       <option value="d3d11">d3d11 (what Chrome/Edge use on Windows)</option>
       <option value="gl">gl (desktop OpenGL)</option>

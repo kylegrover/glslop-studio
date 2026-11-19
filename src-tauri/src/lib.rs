@@ -19,9 +19,10 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::webview::PageLoadEvent;
+use tauri::{Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 const DEFAULT_BRIDGE_PORT: u16 = 47615;
 
@@ -62,6 +63,28 @@ struct BootInfo {
 
 struct Pending(Mutex<HashMap<String, Sender<Value>>>);
 
+/// Whether the webview is listening for `bridge:call`. The HTTP server starts (and bridge.json is
+/// written) before the page has loaded; a call emitted before the listener exists is dropped and the
+/// caller would wait out the full 10-minute timeout. So calls wait here until the page says it is ready.
+#[derive(Default)]
+struct BridgeReady {
+    ready: Mutex<bool>,
+    cv: Condvar,
+}
+
+impl BridgeReady {
+    fn set(&self, v: bool) {
+        *self.ready.lock().unwrap() = v;
+        self.cv.notify_all();
+    }
+    /// Block until ready or `timeout` passes; true if ready.
+    fn wait(&self, timeout: Duration) -> bool {
+        let g = self.ready.lock().unwrap();
+        let (g, _) = self.cv.wait_timeout_while(g, timeout, |r| !*r).unwrap();
+        *g
+    }
+}
+
 fn config_dir() -> PathBuf {
     if let Ok(p) = std::env::var("GLSLOP_STUDIO_HOME") {
         return PathBuf::from(p);
@@ -92,7 +115,14 @@ fn read_settings() -> BootSettings {
 }
 
 /// Env beats settings so a launcher/agent can force a backend for one run.
+/// Only WebView2 (Windows) takes an ANGLE backend; elsewhere report what the webview really uses.
 fn chosen_backend(s: &BootSettings) -> String {
+    if cfg!(target_os = "macos") {
+        return "metal".into();
+    }
+    if !cfg!(windows) {
+        return "gl".into();
+    }
     std::env::var("GLSLOP_ANGLE")
         .ok()
         .or_else(|| s.angle_backend.clone())
@@ -100,6 +130,10 @@ fn chosen_backend(s: &BootSettings) -> String {
 }
 
 fn browser_args(backend: &str, s: &BootSettings) -> (String, bool) {
+    // WebView2 browser args; WKWebView and WebKitGTK take none, so don't report any there.
+    if !cfg!(windows) {
+        return (String::new(), false);
+    }
     // Setting additional args REPLACES wry's defaults, so restate them.
     let mut a = vec!["--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection".to_string()];
     if backend != "default" {
@@ -249,6 +283,12 @@ async fn confirm_native(app: tauri::AppHandle, title: String, message: String, o
 
 // ---------------------------------------------------------------- agent bridge
 
+/// Sent by the webview once its `bridge:call` listener is registered.
+#[tauri::command]
+fn bridge_ready(ready: tauri::State<'_, Arc<BridgeReady>>) {
+    ready.set(true);
+}
+
 #[tauri::command]
 fn bridge_reply(id: String, result: Value, pending: tauri::State<'_, Arc<Pending>>) {
     if let Some(tx) = pending.0.lock().unwrap().remove(&id) {
@@ -275,7 +315,7 @@ fn write_private(path: &Path, contents: &str) {
     }
 }
 
-fn start_bridge(app: tauri::AppHandle, pending: Arc<Pending>, port: u16) -> Option<String> {
+fn start_bridge(app: tauri::AppHandle, pending: Arc<Pending>, ready: Arc<BridgeReady>, port: u16) -> Option<String> {
     let server = (port..port + 20).find_map(|p| tiny_http::Server::http(("127.0.0.1", p)).ok().map(|s| (s, p)));
     let (server, port) = server?;
     let token = uuid::Uuid::new_v4().simple().to_string();
@@ -289,6 +329,7 @@ fn start_bridge(app: tauri::AppHandle, pending: Arc<Pending>, port: u16) -> Opti
         for mut req in server.incoming_requests() {
             let app = app.clone();
             let pending = pending.clone();
+            let ready = ready.clone();
             let token = token.clone();
             std::thread::spawn(move || {
                 let reply = |req: tiny_http::Request, code: u16, body: Value| {
@@ -320,6 +361,9 @@ fn start_bridge(app: tauri::AppHandle, pending: Arc<Pending>, port: u16) -> Opti
                 } else {
                     return reply(req, 404, json!({ "error": "use GET /tools or POST /tools/<name>" }));
                 };
+                if !ready.wait(Duration::from_secs(60)) {
+                    return reply(req, 503, json!({ "error": "the studio window has not finished loading; try again" }));
+                }
                 let id = uuid::Uuid::new_v4().simple().to_string();
                 let (tx, rx) = channel();
                 pending.0.lock().unwrap().insert(id.clone(), tx);
@@ -393,8 +437,10 @@ pub fn run() {
     let backend = chosen_backend(&settings);
     let (args, no_cache) = browser_args(&backend, &settings);
     let pending = Arc::new(Pending(Mutex::new(HashMap::new())));
+    let ready = Arc::new(BridgeReady::default());
+    let ready_on_load = ready.clone();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
@@ -423,9 +469,16 @@ pub fn run() {
             }
         })
         .manage(pending.clone())
+        .manage(ready.clone())
+        // A (re)loading page has no listener until it calls bridge_ready again.
+        .on_page_load(move |_webview, payload| {
+            if payload.event() == PageLoadEvent::Started {
+                ready_on_load.set(false);
+            }
+        })
         .setup(move |app| {
             let handle = app.handle().clone();
-            let bridge_url = start_bridge(handle.clone(), pending.clone(), settings.bridge_port.unwrap_or(DEFAULT_BRIDGE_PORT));
+            let bridge_url = start_bridge(handle.clone(), pending.clone(), ready.clone(), settings.bridge_port.unwrap_or(DEFAULT_BRIDGE_PORT));
             let p = paths(&handle);
             for d in [&p.mods, &p.workspace, &p.cache] {
                 let _ = fs::create_dir_all(d);
@@ -454,11 +507,26 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            boot_info, relaunch, bridge_reply, confirm_native,
+            boot_info, relaunch, bridge_ready, bridge_reply, confirm_native,
             auth::auth_sign_in, auth::auth_status, auth::auth_sign_out, auth::glslop_api, auth::glslop_publish, fs_read_text, fs_write_text, fs_write_base64, fs_write_bytes, fs_list, fs_mkdir, fs_remove, fs_exists
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running glslop studio");
+        .build(tauri::generate_context!())
+        .expect("error while building glslop studio");
+    app.run(|_app, event| {
+        // Don't leave a bridge.json pointing at a dead port. Only remove our own: a second instance
+        // may have taken over the file.
+        if let RunEvent::Exit = event {
+            let f = config_dir().join("bridge.json");
+            let ours = fs::read_to_string(&f)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+                .and_then(|v| v.get("pid").and_then(|p| p.as_u64()))
+                == Some(std::process::id() as u64);
+            if ours {
+                let _ = fs::remove_file(&f);
+            }
+        }
+    });
 }
 
 fn percent_decode(s: &str) -> String {
