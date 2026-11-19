@@ -15,8 +15,20 @@ import { joinPath } from '../studio/host';
 import { textureSources } from './corpus';
 import { GlslopRenderer, renderPosterFrame, runtimeConfig } from '@glslop/core/runtime';
 
-/** Does this webview give workers WebGL2 on OffscreenCanvas? (WebKitGTK and older WebKit: no.) */
-async function workerGlSupported(): Promise<boolean> {
+/** Does this webview give workers WebGL2 on OffscreenCanvas? (WebKitGTK and older WebKit: no.)
+ *  Asked right at boot, a webview whose GPU process is still starting can answer "no" once and "yes"
+ *  a moment later (seen in the Windows release build), so a "no" is only believed after retries. */
+async function workerGlSupported(log: boolean[] = []): Promise<boolean> {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 400));
+    const ok = await workerGlProbe();
+    log.push(ok);
+    if (ok) return true;
+  }
+  return false;
+}
+
+async function workerGlProbe(): Promise<boolean> {
   if (typeof OffscreenCanvas === 'undefined' || typeof Worker === 'undefined') return false;
   const src = 'try{postMessage(!!new OffscreenCanvas(1,1).getContext("webgl2"))}catch(e){postMessage(false)}';
   const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
@@ -73,8 +85,9 @@ const mod: StudioMod = {
       }
     }).catch(() => {});
     mode = (async () => {
-      const [worker, enc] = await Promise.all([studio.settings.thumbWorkersOff ? false : workerGlSupported(), pickEncoding()]);
-      studio.state.thumbMode = { worker, ...enc };
+      const probes: boolean[] = [];
+      const [worker, enc] = await Promise.all([studio.settings.thumbWorkersOff ? false : workerGlSupported(probes), pickEncoding()]);
+      studio.state.thumbMode = { worker, ...enc, probes };
       return { worker, ...enc };
     })();
 
