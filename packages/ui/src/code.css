@@ -1,0 +1,13 @@
+/* ISF syntax-highlight token colours (see src/lib/highlight.ts). Tuned for the dark
+   code surfaces (#101014 bg / #c8f6b0 base) used by pre.code and the ISF editor. */
+.tk-comment { color: #6b7a6b; font-style: italic; }
+.tk-key     { color: #6cb6ff; }            /* JSON keys */
+.tk-str     { color: #e6c07b; }            /* strings */
+.tk-num     { color: #c792ea; }            /* numbers */
+.tk-bool    { color: #ff7ab2; }            /* true / false / null */
+.tk-punct   { color: #8b949e; }            /* { } [ ] , : */
+.tk-kw      { color: #ff7ab2; }            /* glsl keywords */
+.tk-type    { color: #6cb6ff; }            /* glsl types (float, vec3, …) */
+.tk-builtin { color: #9ae65c; }            /* glsl/isf builtins + uniforms */
+.tk-fn      { color: #e6c07b; }            /* function calls */
+.tk-pp      { color: #7f8a7f; }            /* preprocessor directives */

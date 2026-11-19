@@ -1,0 +1,41 @@
+{
+  "name": "glslop-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Desktop studio for browsing and making glslop ISF shaders. Moddable; drivable by your own agent.",
+  "license": "CC0-1.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json && tsc -p tsconfig.node.json --noEmit",
+    "tauri": "tauri",
+    "app": "tauri dev",
+    "app:build": "tauri build",
+    "mcp": "node bin/glslop-studio-mcp.mjs",
+    "studio": "node bin/studio.mjs"
+  },
+  "dependencies": {
+    "@glslop/core": "*",
+    "@glslop/ui": "*",
+    "@tauri-apps/api": "^2.12.0",
+    "@tauri-apps/plugin-dialog": "^2.8.4",
+    "@tauri-apps/plugin-opener": "^2.7.3",
+    "@tauri-apps/plugin-process": "^2.4.0",
+    "@tauri-apps/plugin-updater": "^2.14.1",
+    "gifenc": "^1.0.3",
+    "mediabunny": "^1.66.1",
+    "svelte": "^5.58.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@tauri-apps/cli": "^2.12.6",
+    "@types/node": "^22.20.1",
+    "svelte-check": "^4.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
+}

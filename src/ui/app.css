@@ -1,0 +1,18 @@
+html, body, #app { height: 100%; margin: 0; }
+/* brutal.css (copied verbatim from glslop) styles the page; these are desktop-app adjustments. */
+body { overflow: hidden; font-size: 14px; }
+button, select, input { font-family: var(--mono); font-size: 12px; }
+button:not([class]) { background: var(--paper); border: 2px outset #e8e6dc; padding: 2px 8px; cursor: pointer; color: var(--ink); }
+button:not([class]):active { border-style: inset; }
+.grid .cell { display: block; }
+input[type=text], input:not([type]), select { border: 2px inset #cfcdbf; padding: 3px 6px; background: #fff; }
+.muted { opacity: 0.65; }
+.chip { font-size: 11px; padding: 0 4px; border: 1px solid var(--line); white-space: nowrap; }
+.fast { background: var(--slime); color: #000; }
+.mid { background: #ffe14a; color: #000; }
+.slow { background: #ff9a3c; color: #000; }
+.heavy { background: var(--warn); color: #fff; }
+.bad { background: #000; color: var(--warn); }
+.unk { background: transparent; }
+h2 { margin: 14px 0 4px; }
+h3 { margin: 10px 0 4px; font-family: var(--mono); font-size: 13px; letter-spacing: 0; }

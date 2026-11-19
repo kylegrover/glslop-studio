@@ -1,0 +1,15 @@
+{
+  "name": "@glslop/core",
+  "version": "0.1.0",
+  "description": "glslop's ISF engine: parse, WebGL2 runtime, compile-cost estimator, feature extraction, video export. Framework-free TypeScript.",
+  "license": "CC0-1.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "files": ["src"],
+  "repository": { "type": "git", "url": "https://github.com/kylegrover/glslop-studio", "directory": "packages/core" },
+  "peerDependencies": { "mediabunny": "^1.50.0", "gifenc": "^1.0.3" },
+  "peerDependenciesMeta": { "mediabunny": { "optional": true }, "gifenc": { "optional": true } }
+}
