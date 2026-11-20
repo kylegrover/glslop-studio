@@ -100,3 +100,18 @@ Environment variables for running a disposable copy of the app:
 
 Point a test copy at a local glslop dev server with `{"glslopBase": "http://127.0.0.1:4399"}` in its
 `settings.json`. Sign-ins are stored per server, so this never touches a real glslop.com login.
+
+## Shader weight
+
+Every shader stage shows three gauges: **fps**, **desktop** (cold compile through the first frame on
+the studio's backend) and **browser** (the same on ANGLE D3D11 + FXC, what glslop.com visitors on
+Windows Chrome pay; glslop.com autoplays shaders under 500 ms). On Windows the browser number is
+measured in a hidden background window; on Mac and Linux, or with the `browserProbe` setting off, it's
+a static estimate and says so.
+
+- `weight.measure` `{isf | path | id}`: both numbers for any source (defaults to the open shader).
+- `viewer.setSource` `{isf, weight: true}`: apply and wait for the numbers in one call.
+- `viewer.state` includes the current gauges under `weight`.
+
+Measure before and after a change you expect to be heavy. A cold compile here can be 4–5× faster than
+what visitors get.

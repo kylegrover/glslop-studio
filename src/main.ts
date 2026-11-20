@@ -22,9 +22,10 @@ import views from './core/views';
 import thumbs from './core/thumbs';
 import live from './core/live';
 import account from './core/account';
+import weight from './core/weight';
 
 /** Core mods, in activation order. Exported on window.studio.coreMods for inspection/reload. */
-const CORE: Record<string, StudioMod> = { corpus, gl, thumbs, live, bench, advisor, account, views };
+const CORE: Record<string, StudioMod> = { corpus, gl, thumbs, live, bench, advisor, weight, account, views };
 
 async function boot() {
   const bootT0 = performance.now();

@@ -9,6 +9,7 @@ export default defineConfig({
   plugins: [svelte()],
   clearScreen: false,
   server: { port: 1420, strictPort: true, watch: { ignored: ['**/src-tauri/**'] } },
-  build: { target: 'es2022' },
+  // probe.html is the hidden d3d11 cost probe window (src/probe.ts).
+  build: { target: 'es2022', rollupOptions: { input: { main: 'index.html', probe: 'probe.html' } } },
   define: { __APP_VERSION__: JSON.stringify(version) },
 });

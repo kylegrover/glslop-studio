@@ -11,6 +11,8 @@
   let tools = $state<any[]>([]);
   let thumbSource = $state(studio.settings.thumbSource ?? 'auto');
   let hoverPlay = $state(studio.settings.hoverPlay !== false);
+  let browserProbe = $state(studio.settings.browserProbe !== false);
+  async function setProbe() { await setSetting('browserProbe', browserProbe); if (!browserProbe) await studio.state.weight?.stopProbe?.(); }
   let autoSync = $state(studio.settings.autoSync !== false);
   let syncMin = $state(studio.settings.syncIntervalMin ?? 15);
   let stats = $state<any>(null);
@@ -62,6 +64,15 @@
   </div>
   <p class="muted">Also: env <code>GLSLOP_ANGLE=d3d11</code> / <code>GLSLOP_NO_GPU_CACHE=1</code> override for one launch.</p>
   {#if env}<pre class="env">{JSON.stringify(env, null, 2)}</pre>{/if}
+
+  <h2>shader weight</h2>
+  <p class="muted">Under every shader: fps, plus how long a cold compile takes to reach the first frame here (desktop) and in
+    Chrome on Windows (browser). glslop.com autoplays shaders whose browser number is under 500 ms.</p>
+  <div class="row">
+    <label><input type="checkbox" bind:checked={browserProbe} onchange={setProbe} disabled={boot.platform !== 'windows'} />
+      measure the browser number for real (Windows: a hidden background window running Chrome's D3D11 compiler,
+      started on first use, closed after 5 idle minutes). Off, or on Mac/Linux: a static estimate from the source.</label>
+  </div>
 
   <h2>data + caching</h2>
   <p class="muted">Thumbnails render locally on your GPU (a cold Vulkan compile is a few ms), so glslop.com only serves

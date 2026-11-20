@@ -55,7 +55,10 @@ interface ImageInput {
 // overwritten by the AVIF/WebP re-encode), so it's the canonical, lossless texture source.
 // STUDIO PATCH: the desktop app is not served from glslop.com, so the base is configurable.
 // textureUrl lets the studio serve image-input textures from its local cache instead of the server.
-export const runtimeConfig: { posterBase: string; textureUrl?: (shaderId: string) => string } = { posterBase: 'https://glslop.com' };
+// STUDIO PATCH: blockingCompile skips KHR_parallel_shader_compile, so load() blocks in the link-status
+// query for exactly as long as the driver works. The d3d11 cost probe uses it to time compiles without
+// a polling loop (timers are throttled in a hidden window).
+export const runtimeConfig: { posterBase: string; textureUrl?: (shaderId: string) => string; blockingCompile?: boolean } = { posterBase: 'https://glslop.com' };
 export function posterTextureUrl(shaderId: string): string {
   return runtimeConfig.textureUrl?.(shaderId) ?? `${runtimeConfig.posterBase}/posters/${encodeURIComponent(shaderId)}.png`;
 }
@@ -259,7 +262,7 @@ export class GlslopRenderer {
     if (!gl) throw new Error('WebGL2 not available');
     this.gl = gl;
     // Enable before submitting compiler work, not after linkProgram.
-    this.parallelExt = gl.getExtension('KHR_parallel_shader_compile') as KHRParallelShaderCompile | null;
+    this.parallelExt = runtimeConfig.blockingCompile ? null : gl.getExtension('KHR_parallel_shader_compile') as KHRParallelShaderCompile | null;
     // float render targets (reaction-diffusion etc.) need this; degrade to RGBA8 if absent
     this.canFloat = !!gl.getExtension('EXT_color_buffer_float');
     // RGBA16F linear sampling is core WebGL2. OES_texture_half_float_linear is a WebGL1

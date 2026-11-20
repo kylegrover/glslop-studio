@@ -50,9 +50,14 @@ const mod: StudioMod = {
 
     studio.tools.add({
       name: 'viewer.setSource',
-      description: 'Replace the live viewer\'s source (hot reload). Returns compile result. The human sees it immediately.',
-      input: { type: 'object', properties: { isf: { type: 'string' }, title: { type: 'string' } }, required: ['isf'] },
-      async run(args: { isf: string; title?: string }) { return (await viewer()).setSource(args.isf, args.title); },
+      description: 'Replace the live viewer\'s source (hot reload). The human sees it immediately, with an "updated by agent" flash. Returns the compile result; pass weight:true to also get the gauges (desktop + browser/d3d11 compile-to-first-frame; glslop.com autoplays under 500 ms).',
+      input: { type: 'object', properties: { isf: { type: 'string' }, title: { type: 'string' }, weight: { type: 'boolean' } }, required: ['isf'] },
+      async run(args: { isf: string; title?: string; weight?: boolean }, ctx) {
+        const v = await viewer();
+        const r = await v.setSource(args.isf, args.title, ctx.caller === 'ui' ? 'you' : 'agent');
+        if (!args.weight || !r.ok || !studio.state.weight) return r;
+        return { ...r, weight: await studio.call('weight.measure', { isf: args.isf }, { caller: ctx.caller }) };
+      },
     });
 
     studio.tools.add({
@@ -61,7 +66,7 @@ const mod: StudioMod = {
       async run() {
         const v = studio.state.viewer;
         if (!v) return { open: false };
-        return { open: studio.state.activeView === 'viewer', id: v.id, title: v.title, values: v.values, errors: v.errors, compileMs: v.compileMs, sourceBytes: v.source.length };
+        return { open: studio.state.activeView === 'viewer', id: v.id, title: v.title, values: v.values, errors: v.errors, compileMs: v.compileMs, sourceBytes: v.source.length, weight: v.weight ?? null };
       },
     });
 

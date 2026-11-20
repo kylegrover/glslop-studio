@@ -281,6 +281,46 @@ async fn confirm_native(app: tauri::AppHandle, title: String, message: String, o
     confirm(&app, title, message, ok).await
 }
 
+// ---------------------------------------------------------------- d3d11 cost probe
+
+/// Open (once) the hidden window that times compiles on ANGLE D3D11, what Chrome on Windows uses, so
+/// the studio can show what glslop.com visitors would pay. Windows only; returns "created",
+/// "existing" or "unsupported". Async because creating a window from a sync command deadlocks on Windows.
+#[tauri::command]
+async fn probe_start(app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Ok("unsupported".into())
+    }
+    #[cfg(windows)]
+    {
+        if app.get_webview_window("probe").is_some() {
+            return Ok("existing".into());
+        }
+        // Same defaults as the main window, plus D3D11 and no GPU program/shader caches (every probe is cold).
+        let args = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --use-angle=d3d11                     --enable-privileged-webgl-extensions --ignore-gpu-blocklist                     --disable-gpu-program-cache --disable-gpu-shader-disk-cache";
+        WebviewWindowBuilder::new(&app, "probe", WebviewUrl::App("probe.html".into()))
+            .title("glslop studio · d3d11 probe")
+            .visible(false)
+            .skip_taskbar(true)
+            .inner_size(240.0, 160.0)
+            .additional_browser_args(args)
+            .data_directory(config_dir().join("webview").join("probe-d3d11"))
+            .build()
+            .map_err(|e| e.to_string())?;
+        Ok("created".into())
+    }
+}
+
+/// Close the probe window (setting turned off, or a compile is taking too long to wait for).
+#[tauri::command]
+async fn probe_stop(app: tauri::AppHandle) {
+    if let Some(w) = app.get_webview_window("probe") {
+        let _ = w.destroy();
+    }
+}
+
 // ---------------------------------------------------------------- agent bridge
 
 /// Sent by the webview once its `bridge:call` listener is registered.
@@ -470,9 +510,17 @@ pub fn run() {
         })
         .manage(pending.clone())
         .manage(ready.clone())
+        // The hidden probe window must never keep the app alive on its own.
+        .on_window_event(|window, event| {
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                window.app_handle().exit(0);
+            }
+        })
         // A (re)loading page has no listener until it calls bridge_ready again.
-        .on_page_load(move |_webview, payload| {
-            if payload.event() == PageLoadEvent::Started {
+        .on_page_load(move |webview, payload| {
+            // Only the main window hosts the bridge listener; the hidden probe window loading must not
+            // mark it unready.
+            if webview.label() == "main" && payload.event() == PageLoadEvent::Started {
                 ready_on_load.set(false);
             }
         })
@@ -507,7 +555,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            boot_info, relaunch, bridge_ready, bridge_reply, confirm_native,
+            boot_info, relaunch, bridge_ready, bridge_reply, confirm_native, probe_start, probe_stop,
             auth::auth_sign_in, auth::auth_status, auth::auth_sign_out, auth::glslop_api, auth::glslop_publish, fs_read_text, fs_write_text, fs_write_base64, fs_write_bytes, fs_list, fs_mkdir, fs_remove, fs_exists
         ])
         .build(tauri::generate_context!())

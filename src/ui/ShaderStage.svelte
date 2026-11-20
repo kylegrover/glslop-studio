@@ -8,6 +8,7 @@
   import { parseISF } from '@glslop/core/parse';
   import type { ISFInput } from '@glslop/core/types';
   import IsfCodeArea from '@glslop/ui/IsfCodeArea.svelte';
+  import WeightBar from './WeightBar.svelte';
 
   interface Props {
     studio: Studio;
@@ -48,6 +49,12 @@
   let panelOpen = $state(false);
   let keepOpen = $state(false);
   let fps = $state(0);
+  // weight gauges: measured after each successful compile (debounced, newest wins)
+  let wDesktop = $state<any>(null), wBrowser = $state<any>(null);
+  let wBusy = $state({ desktop: false, browser: false });
+  let weightSeq = 0, weightTimer: ReturnType<typeof setTimeout> | undefined;
+  // "updated by agent": a flash on the code pane when the source arrives over the bridge
+  let agentFlash = $state<string | null>(null), agentTimer: ReturnType<typeof setTimeout> | undefined;
   let wrapEl: HTMLDivElement;
   let canvasEl: HTMLCanvasElement;
   let renderer: GlslopRenderer | null = null;
@@ -114,7 +121,24 @@
     studio.events.emit('viewer:compiled', { id: shaderId, ok: res.compileOk, compileMs, errors: res.errors, backend: studio.host.boot.angleBackend });
     if (!res.compileOk) { compileErr = res.errors.join('\n') || 'compile failed'; compileOk = false; return false; }
     compileErr = null; compileOk = true;
+    scheduleWeight(src);
     return true;
+  }
+  function scheduleWeight(src: string, delay = 700) {
+    const w = studio.state.weight;
+    if (!w) return;
+    clearTimeout(weightTimer);
+    const mine = ++weightSeq;
+    weightTimer = setTimeout(async () => {
+      wBusy = { desktop: true, browser: true };
+      const d = await w.desktop(src).catch(() => null);
+      if (mine !== weightSeq) return;
+      wDesktop = d; wBusy = { ...wBusy, desktop: false };
+      const b = await w.probe(src, `stage:${shaderId ?? filename}`).catch(() => null);
+      if (mine !== weightSeq || b?.note === 'superseded') return;
+      wBrowser = b; wBusy = { desktop: false, browser: false };
+      studio.events.emit('viewer:weight', { id: shaderId, desktop: d, browser: b });
+    }, delay);
   }
   async function apply(force = false) {
     if (compiling) await compileIdle();
@@ -175,7 +199,13 @@
       get id() { return shaderId; }, get title() { return filename; }, get source() { return source; },
       get values() { return currentInputs(); }, get errors() { return compileErr ? [compileErr] : []; }, get compileMs() { return compileMs; },
       get renderer() { return renderer; }, canvas: canvasEl,
-      setSource: async (src: string) => { source = src; await apply(true); return { ok: compileOk, errors: compileErr ? [compileErr] : [], compileMs }; },
+      setSource: async (src: string, _title?: string, from = 'agent') => {
+        source = src; await apply(true);
+        agentFlash = `updated by ${from} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+        clearTimeout(agentTimer); agentTimer = setTimeout(() => (agentFlash = null), 6000);
+        return { ok: compileOk, errors: compileErr ? [compileErr] : [], compileMs };
+      },
+      get weight() { return { fps, desktop: wDesktop, browser: wBrowser, measuring: wBusy }; },
       setValue: (name: string, v: any) => {
         const inp = inputs.find((i) => i.NAME === name);
         if (!inp) return;
@@ -243,6 +273,7 @@
         {#if !panelOpen && !keepOpen}<div class="fs-hotzone" onmouseenter={() => (panelOpen = true)} role="presentation"></div>{/if}
       {/if}
     </div>
+    <WeightBar {studio} {fps} desktop={wDesktop} browser={wBrowser} busy={wBusy} />
   </section>
 
   <section class="col col-params" class:rail={codeExpanded}>
@@ -265,7 +296,7 @@
     {/if}
   </section>
 
-  <section class="col col-code">
+  <section class="col col-code" class:agent-flash={!!agentFlash}>
     <div class="inner">
       <header class="col-head">
         <span class="kicker">.fs source · isf</span>
@@ -276,6 +307,7 @@
               <button class="jump-btn" onclick={() => codeArea?.scrollToChar(bodyStartIndex(source), true)}>↓ code</button>
             </span>
           {/if}
+          {#if agentFlash}<span class="agent-badge">{agentFlash}</span>{/if}
           {#if dirty}<span class="dirty">edited</span>{/if}
           <span class={compileOk ? 'compile-ok' : 'compile-bad'}>{compileOk ? 'compiles ✓' : 'broken ✗'}</span>
           <button class="expand-btn" onclick={() => (codeExpanded = !codeExpanded)}>{codeExpanded ? '⛶ collapse' : '⛶ expand'}</button>
@@ -363,6 +395,9 @@
   .slider-row .v { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; }
   .slider-row input[type='color'] { width: 100%; height: 20px; padding: 0; border: 2px solid var(--line); background: none; }
   .slider-row select { font-family: var(--mono); font-size: 12px; background: #fff; border: 2px inset #999; }
+  .agent-badge { background: var(--slime); color: #000; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; white-space: nowrap; }
+  .col-code.agent-flash { animation: agentflash 1.6s ease-out; }
+  @keyframes agentflash { 0% { box-shadow: 0 0 0 4px var(--slime), 3px 3px 0 rgba(0,0,0,.25); } 100% { box-shadow: 0 0 0 0 transparent, 3px 3px 0 rgba(0,0,0,.25); } }
   .dirty { background: var(--magenta); color: #fff; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; }
   .compile-strip { margin: 6px 8px 0; padding: 6px 8px; background: var(--warn); color: #fff; font-size: 11px; line-height: 1.35; max-height: 90px; overflow: auto; white-space: pre-wrap; border: 2px solid var(--line); }
   .code-actions { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px; }
