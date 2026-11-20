@@ -7,7 +7,7 @@ const scope = self as unknown as Worker;
 let owner: GlslopRenderer | null = null;
 let canvas: OffscreenCanvas | null = null;
 
-interface Job { id: string; isf: string; size: number; time: number; textures?: Record<string, string>; type?: string; quality?: number }
+interface Job { id: string; isf: string; size: number; time: number; posterBase: string; textures?: Record<string, string>; type?: string; quality?: number }
 
 scope.onmessage = async (e: MessageEvent<Job>) => {
   const job = e.data;
@@ -18,6 +18,7 @@ scope.onmessage = async (e: MessageEvent<Job>) => {
       owner = new GlslopRenderer(canvas);
     }
     if (owner.isContextLost()) throw new Error('context lost');
+    runtimeConfig.posterBase = job.posterBase;
     runtimeConfig.textureUrl = job.textures ? (id) => job.textures![id] ?? `${runtimeConfig.posterBase}/posters/${id}.png` : undefined;
     const r = owner.createSibling();
     try {

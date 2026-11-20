@@ -31,7 +31,7 @@
 // clip's own timeline and looks bad (Kyle, 2026-07-23, from live testing). We don't animate those — but
 // we do give each one a deterministic random CONSTANT within its range (varying per roll), so different
 // rolls start at a different phase/speed for variety, without any per-frame motion on them.
-import type { ISFInput } from './types';
+import type { ISFInput } from './types.js';
 
 export type MotionMode = 'drift' | 'expressive';
 

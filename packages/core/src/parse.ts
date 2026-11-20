@@ -1,4 +1,4 @@
-import type { ISFInput, ISFPass, ParsedISF } from './types';
+import type { ISFInput, ISFPass, ParsedISF } from './types.js';
 
 export type ParseResult =
   | { ok: true; isf: ParsedISF }

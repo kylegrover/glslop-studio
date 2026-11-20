@@ -2,7 +2,7 @@
 // Windows, with the GPU program caches off. The main window sends it shaders; it times a cold compile
 // through the first drawn frame and sends the number back. One job at a time, in order.
 //
-// Protocol (Tauri events): main → probe 'probe:job' {id, isf} and 'probe:ping'; probe → main
+// Protocol (Tauri events): main → probe 'probe:job' {id, isf, posterBase} and 'probe:ping'; probe → main
 // 'probe:ready' {renderer} and 'probe:result' {id, ok, ms, errors, renderer}.
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { GlslopRenderer, runtimeConfig } from '@glslop/core/runtime';
@@ -45,7 +45,8 @@ async function run(id: string, isf: string) {
   }
 }
 
-await listen<{ id: string; isf: string }>('probe:job', (e) => {
+await listen<{ id: string; isf: string; posterBase?: string }>('probe:job', (e) => {
+  if (e.payload.posterBase !== undefined) runtimeConfig.posterBase = e.payload.posterBase;
   chain = chain.then(() => run(e.payload.id, e.payload.isf));
 });
 await listen('probe:ping', () => { void emitTo('main', 'probe:ready', { renderer }); });

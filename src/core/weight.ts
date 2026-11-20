@@ -11,6 +11,7 @@
 // Settings: browserProbe (default true; false = estimate only, no background window).
 import type { Studio, StudioMod } from '../studio/api';
 import { loopBudget } from '@glslop/core/budget';
+import { runtimeConfig } from '@glslop/core/runtime';
 import { coldCopy } from '../engine/cold';
 
 export const AUTOPLAY_MS = 500;
@@ -87,7 +88,7 @@ const mod: StudioMod = {
         const res = await new Promise<any>((resolve) => {
           waiting.set(id, resolve);
           const t = setTimeout(() => { if (waiting.has(id)) { waiting.delete(id); resolve({ ok: false, ms: PROBE_TIMEOUT_MS, timedOut: true, errors: ['still compiling after 2 min'] }); } }, PROBE_TIMEOUT_MS);
-          import('@tauri-apps/api/event').then(({ emitTo }) => emitTo('probe', 'probe:job', { id, isf })).catch((e) => { clearTimeout(t); waiting.delete(id); resolve({ ok: false, ms: null, errors: [String(e)] }); });
+          import('@tauri-apps/api/event').then(({ emitTo }) => emitTo('probe', 'probe:job', { id, isf, posterBase: runtimeConfig.posterBase })).catch((e) => { clearTimeout(t); waiting.delete(id); resolve({ ok: false, ms: null, errors: [String(e)] }); });
         });
         if (res.timedOut) await stopProbe(); // the window is stuck inside FXC; start fresh next time
         touch();

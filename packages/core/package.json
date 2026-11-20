@@ -1,15 +1,54 @@
 {
   "name": "@glslop/core",
   "version": "0.1.0",
-  "description": "glslop's ISF engine: parse, WebGL2 runtime, compile-cost estimator, feature extraction, video export. Framework-free TypeScript.",
+  "description": "glslop's ISF shader engine: parser, WebGL2 runtime, compile-cost estimator, feature extraction, video export. Framework-free, browser and worker safe.",
+  "keywords": [
+    "isf",
+    "glsl",
+    "shader",
+    "webgl2",
+    "glslop"
+  ],
   "license": "CC0-1.0",
   "type": "module",
+  "author": "Kyle Grover",
+  "homepage": "https://glslop.com",
+  "bugs": "https://github.com/kylegrover/glslop-studio/issues",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kylegrover/glslop-studio.git",
+    "directory": "packages/core"
+  },
   "sideEffects": false,
   "exports": {
-    "./*": "./src/*.ts"
+    "./*": {
+      "glslop-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
   },
-  "files": ["src"],
-  "repository": { "type": "git", "url": "https://github.com/kylegrover/glslop-studio", "directory": "packages/core" },
-  "peerDependencies": { "mediabunny": "^1.50.0", "gifenc": "^1.0.3" },
-  "peerDependenciesMeta": { "mediabunny": { "optional": true }, "gifenc": { "optional": true } }
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build"
+  },
+  "peerDependencies": {
+    "gifenc": "^1.0.3",
+    "mediabunny": "^1.50.0"
+  },
+  "peerDependenciesMeta": {
+    "gifenc": {
+      "optional": true
+    },
+    "mediabunny": {
+      "optional": true
+    }
+  }
 }

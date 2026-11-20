@@ -1,6 +1,6 @@
-import { parseISF } from './parse';
-import { waitForCompile } from './compile-wait';
-import type { ISFInput, ISFPass } from './types';
+import { parseISF } from './parse.js';
+import { waitForCompile } from './compile-wait.js';
+import type { ISFInput, ISFPass } from './types.js';
 
 // ---------------------------------------------------------------------------
 // glslop WebGL2 ISF runtime. Classic ISF (GLSL ES 1.00 body with gl_FragColor)
@@ -53,17 +53,19 @@ interface ImageInput {
 
 // Where a source shader's still lives. The original 512x512 PNG is always kept (never
 // overwritten by the AVIF/WebP re-encode), so it's the canonical, lossless texture source.
-// STUDIO PATCH: the desktop app is not served from glslop.com, so the base is configurable.
-// textureUrl lets the studio serve image-input textures from its local cache instead of the server.
-// STUDIO PATCH: blockingCompile skips KHR_parallel_shader_compile, so load() blocks in the link-status
-// query for exactly as long as the driver works. The d3d11 cost probe uses it to time compiles without
-// a polling loop (timers are throttled in a hidden window).
-export const runtimeConfig: { posterBase: string; textureUrl?: (shaderId: string) => string; blockingCompile?: boolean } = { posterBase: 'https://glslop.com' };
+//
+// Host settings. Set them once per JS realm (main thread, each worker) before loading shaders.
+//  posterBase      origin the poster PNGs come from. '' (default) = root-relative, which is right on
+//                  glslop.com itself; anything not served from glslop.com sets 'https://glslop.com'.
+//  textureUrl      overrides where a source shader's still is fetched (e.g. a local cache).
+//  blockingCompile skips KHR_parallel_shader_compile, so load() blocks in the link-status query for
+//                  exactly as long as the driver works (cost probes; timers throttle in hidden windows).
+export const runtimeConfig: { posterBase: string; textureUrl?: (shaderId: string) => string; blockingCompile?: boolean } = { posterBase: '' };
 export function posterTextureUrl(shaderId: string): string {
   return runtimeConfig.textureUrl?.(shaderId) ?? `${runtimeConfig.posterBase}/posters/${encodeURIComponent(shaderId)}.png`;
 }
 
-// STUDIO PATCH: what the last load() actually handed the driver, for inspection tools.
+// What the last load() actually handed the driver, for inspection tools.
 export interface CompileRecord {
   fragmentSource: string;
   vertexSource: string;
@@ -517,7 +519,7 @@ export class GlslopRenderer {
     return { compileOk: true, errors: [], inputs: this.inputs };
   }
 
-  // STUDIO PATCH: let pooled callers notice a dead context and rebuild.
+  // Lets pooled callers notice a dead context and rebuild.
   isContextLost(): boolean { return this.gl.isContextLost(); }
 
   getInputs(): ISFInput[] {

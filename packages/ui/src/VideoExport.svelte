@@ -1,8 +1,12 @@
 <script lang="ts">
-    // Shared by glslop.com and glslop studio. Host differences are adapters:
-  //  save(blob, filename) -> where the file goes (browser download / workspace folder); returns a label
-  //  onStart / onEnd      -> pause the page's live renderer while exporting
-  //  reveal(label)        -> optional "open" button after saving (desktop)
+  // Shared by glslop.com and glslop studio. Host differences are props:
+  //  save(blob, filename) -> where the file goes (default: a browser download); returns a label
+  //  onStart()            -> called before anything is allocated. Return a string to refuse the export
+  //                          (it is shown to the user), e.g. while another renderer can't be paused.
+  //  onEnd()              -> export finished, failed or was cancelled
+  //  reveal(label)        -> optional "show" button after saving (desktop)
+  //  liveInputs           -> the viewer's current knob values, so the clip matches what's on screen
+  //  where / savedWord    -> wording: 'in your browser' + 'downloaded', or 'on your gpu' + 'saved'
   import { EXPORT_CAPS, exportVideo, type VideoFormat, type ExportQuality } from '@glslop/core/export-video';
   import { parseISF } from '@glslop/core/parse';
   import { defaultFor } from '@glslop/core/runtime';
@@ -10,16 +14,17 @@
 
   interface Props {
     save?: (blob: Blob, filename: string) => Promise<string | void>;
-    onStart?: () => void;
+    onStart?: () => void | string;
     onEnd?: () => void;
     reveal?: (saved: string) => void;
     /** Wording: 'in your browser' or 'on your gpu' etc. */
     where?: string;
+    savedWord?: string;
     liveInputs?: Record<string, number | boolean | number[]> | null;
     isf: string;
     name?: string; // download basename, e.g. "liquid-moss-qkr5vof8"
   }
-  let { isf, name = 'shader', liveInputs = null, save = browserDownload, onStart, onEnd, reveal, where = 'in your browser' }: Props = $props();
+  let { isf, name = 'shader', liveInputs = null, save = browserDownload, onStart, onEnd, reveal, where = 'in your browser', savedWord = 'downloaded' }: Props = $props();
   async function browserDownload(blob: Blob, filename: string) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -121,7 +126,7 @@
 
   async function run() {
     if (busy) return;
-    // Synchronous veto before export-start or any renderer/encoder allocation.
+    // onStart may refuse (returns a message) before any renderer or encoder is allocated.
     busy = true;
     progress = 0;
     msg = null;
@@ -129,7 +134,8 @@
     controller = new AbortController();
     // Pause the page's live shader while we export — it competes for the GPU (and is distracting) while
     // the offscreen renderer steps frames. ShaderCanvas listens for these and resumes on export-end.
-    onStart?.();
+    const refused = onStart?.();
+    if (typeof refused === 'string') { msg = refused; busy = false; controller = null; return; }
     try {
       if (length > maxLength) length = maxLength;
       const requested = format;
@@ -169,14 +175,14 @@
         },
         (p) => (progress = p),
       );
-      await downloadBlob(result.blob, `${name}-${Date.now().toString(36)}.${result.ext}`);
+      await downloadBlob(result.blob, `${name}.${result.ext}`);
       const kb = Math.round(result.blob.size / 1024);
       const codec = result.codec ? ` · ${result.codec}` : '';
       const rollInfo = usedRoll ? ` · roll ${usedRoll}` : '';
       msg =
         result.ext !== requested
-          ? `saved ${result.ext.toUpperCase()} (${kb}kb${codec})${rollInfo} — ${requested.toUpperCase()} couldn't be produced in this browser.`
-          : `saved ${result.ext.toUpperCase()} (${kb}kb${codec})${rollInfo} ✓`;
+          ? `${savedWord} ${result.ext.toUpperCase()} (${kb}kb${codec})${rollInfo} — ${requested.toUpperCase()} couldn't be produced in this browser.`
+          : `${savedWord} ${result.ext.toUpperCase()} (${kb}kb${codec})${rollInfo} ✓`;
       // Advance to the next roll so a repeat export lands a different clip — unless the token is pinned.
       if (usedRoll && !rollLocked) reroll();
     } catch (e) {

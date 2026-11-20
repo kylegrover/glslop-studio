@@ -7,6 +7,8 @@ const { version } = JSON.parse(readFileSync(new URL('./package.json', import.met
 
 export default defineConfig({
   plugins: [svelte()],
+  // Use the workspace packages' TypeScript source directly (no package build needed while developing).
+  resolve: { conditions: ['glslop-source', 'module', 'browser', 'development|production', 'svelte'] },
   clearScreen: false,
   server: { port: 1420, strictPort: true, watch: { ignored: ['**/src-tauri/**'] } },
   // probe.html: hidden d3d11 cost probe (src/probe.ts). publish.html: the publish confirmation (src/publish.ts).

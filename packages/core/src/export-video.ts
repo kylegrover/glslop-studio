@@ -7,8 +7,8 @@
 // One implementation, two entry points: the "download clip" control on the shader page and the
 // glslop.exportVideo() apps-bridge method both call exportVideo(). Mediabunny (MP4/WebM) and gifenc (GIF)
 // are dynamically imported so they only enter the bundle when someone actually exports.
-import { GlslopRenderer, advanceTimeline, drawTimelineFrame } from './runtime';
-import { repairAvcMetadataInPlace } from './avc-config';
+import { GlslopRenderer, advanceTimeline, drawTimelineFrame } from './runtime.js';
+import { repairAvcMetadataInPlace } from './avc-config.js';
 
 export type VideoFormat = 'mp4' | 'webm' | 'gif';
 export type ExportQuality = 'low' | 'medium' | 'high';

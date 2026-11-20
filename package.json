@@ -16,8 +16,8 @@
     "studio": "node bin/studio.mjs"
   },
   "dependencies": {
-    "@glslop/core": "*",
-    "@glslop/ui": "*",
+    "@glslop/core": "^0.1.0",
+    "@glslop/ui": "^0.1.0",
     "@tauri-apps/api": "^2.12.0",
     "@tauri-apps/plugin-dialog": "^2.8.4",
     "@tauri-apps/plugin-opener": "^2.7.3",

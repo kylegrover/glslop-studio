@@ -16,6 +16,9 @@
     "types": [
       "svelte",
       "vite/client"
+    ],
+    "customConditions": [
+      "glslop-source"
     ]
   },
   "include": [

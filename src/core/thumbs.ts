@@ -163,7 +163,7 @@ const mod: StudioMod = {
           };
           w.w.addEventListener('message', onMsg);
           w.w.onerror = () => { w.w.removeEventListener('message', onMsg); w.busy = false; w.w.terminate(); workers.splice(workers.indexOf(w), 1); resolve({ ok: false, error: 'thumbnail worker crashed' }); pump(); };
-          w.w.postMessage({ id: key, isf: s.isf, size: size(), time: 0.8, textures, type: enc.type, quality: 0.86 });
+          w.w.postMessage({ id: key, isf: s.isf, size: size(), time: 0.8, posterBase: runtimeConfig.posterBase, textures, type: enc.type, quality: 0.86 });
         };
         tryRun();
       });

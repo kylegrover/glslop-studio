@@ -11,8 +11,8 @@
 //
 // Bump EXTRACTOR_VERSION whenever the output shape or detection logic changes so the backfill script
 // knows which rows to re-derive.
-import { parseISF } from './parse';
-import type { ISFInputType } from './types';
+import { parseISF } from './parse.js';
+import type { ISFInputType } from './types.js';
 
 export const EXTRACTOR_VERSION = 3;
 
