@@ -108,7 +108,7 @@ void main(){
       <button class="linkish" disabled={pubBusy} onclick={() => publish(true)}>or stage a draft (no account)</button>
     {/if}
     {#if pubMsg}<div class="notice">{pubMsg}</div>{/if}
-    <div class="muted small">everything posted is CC0. you'll confirm in a native dialog before anything goes public.</div>
+    <div class="muted small">everything posted is CC0. you'll see exactly what's sent and confirm before anything goes public.</div>
   </div>
 
   {#if advice}

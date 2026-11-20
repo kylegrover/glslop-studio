@@ -1,9 +1,10 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Every studio window gets the same (deliberately broad) permissions. Mods are trusted code; credentials stay in Rust (see src/auth.rs).",
+  "description": "The main and probe windows get the same (deliberately broad) permissions. Mods are trusted code; credentials stay in Rust (see src/auth.rs). The publish confirmation window has its own, minimal capability (publish.json).",
   "windows": [
-    "*"
+    "main",
+    "probe"
   ],
   "permissions": [
     "core:default",

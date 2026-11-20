@@ -39,9 +39,11 @@ What the token (and any mod) cannot do:
 
 - **Read your glslop login.** Tokens stay in the native layer and are only ever sent to the server
   you signed in to.
-- **Publish without you.** The `publish` tool ends in a native dialog that the native layer shows and
-  then acts on itself. There is no other write path to your account; the authenticated API door for
-  mods is read-only.
+- **Publish without you.** The `publish` tool opens a confirmation window that shows every field being
+  sent (title, tags, AI credit and prompt, poster, the full source). The native layer opens it and sends
+  the request itself, and only that window can approve. There is no other write path to your account;
+  the authenticated API door for mods is read-only. (A hostile *mod* is a different matter: mods run with
+  the app's full file access, so they are trusted code. See the README.)
 
 ## 3. CLI
 

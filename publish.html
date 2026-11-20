@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Only this page's own bundled script and styles; images only from data: (the poster). -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:; connect-src ipc: http://ipc.localhost" />
+    <title>Publish to glslop</title>
+  </head>
+  <body>
+    <!-- The publish confirmation window. See src/publish.ts and src-tauri/src/publish.rs. -->
+    <main id="root"><p class="muted">loading…</p></main>
+    <script type="module" src="/src/publish.ts"></script>
+  </body>
+</html>

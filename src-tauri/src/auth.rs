@@ -6,8 +6,8 @@
 //!
 //! The webview (UI, mods, agents over the bridge) gets exactly two authenticated doors:
 //! - `glslop_api`: GET requests to /api/* (reads).
-//! - `glslop_publish`: the one write. Rust shows the confirm dialog and Rust sends the request, so
-//!   nothing in the webview can publish without a human click.
+//! - `glslop_publish`: the one write. Rust opens the confirmation window (src/publish.rs) and Rust
+//!   sends the request, so a mod or agent calling the publish tool can't approve it for the human.
 
 use base64::Engine;
 use serde::Serialize;
@@ -333,11 +333,10 @@ fn clip(s: &str, n: usize) -> String {
     }
 }
 
-/// Publish a shader as the signed-in user. The confirm dialog is built and shown HERE and the
-/// request is sent HERE, so no code in the webview (a mod, an agent on the bridge) can publish
-/// without a real human click. The facts in the dialog (account, server, title, supersedes) come
-/// from Rust state and from the exact payload being sent. `note` is extra detail from the caller,
-/// shown after them under its own label.
+/// Publish a shader as the signed-in user. Rust opens the confirmation window, which shows every
+/// field of this exact payload, and Rust sends it, so a mod or agent calling this can't approve it
+/// for the human. The account is pinned when the window opens: if it changes before the click, the
+/// publish is refused. `note` is extra detail from the caller, shown under its own label.
 #[tauri::command]
 pub async fn glslop_publish(
     app: tauri::AppHandle,
@@ -353,18 +352,16 @@ pub async fn glslop_publish(
     if payload["isf"].as_str().map_or(true, |s| s.trim().is_empty()) {
         return Err("payload.isf is required".into());
     }
-    let mut msg = format!("Publish \"{}\" as @{} on {}?\n\nIt becomes public and CC0.", clip(title, 120), handle, base);
-    if let Some(sup) = payload["supersedes"].as_str() {
-        msg.push_str(&format!("\nReplaces your shader #{}.", clip(sup, 40)));
-    }
-    if by_agent.unwrap_or(false) {
-        msg.push_str("\n\nRequested by an agent.");
-    }
-    if let Some(n) = note.as_deref().map(str::trim).filter(|n| !n.is_empty()) {
-        msg.push_str(&format!("\n\nDetails from the app:\n{}", clip(n, 400)));
-    }
-    if !crate::confirm(&app, "Publish to glslop?".into(), msg, "Publish".into()).await {
+    let _ = title;
+    let note = note.as_deref().map(str::trim).filter(|n| !n.is_empty()).map(|n| clip(n, 600));
+    let view = crate::publish::view_model(&payload, &handle, &base, note.as_deref(), by_agent.unwrap_or(false));
+    if !crate::publish::ask(&app, view).await? {
         return Ok(json!({ "published": false, "reason": "cancelled by the human" }));
+    }
+    // Same account as the one shown? A sign-out or sign-in while the window was open must not
+    // publish as someone else.
+    if status_for(&state, &base)?.handle.as_deref() != Some(handle.as_str()) {
+        return Ok(json!({ "published": false, "reason": "the signed-in account changed while confirming; nothing was sent" }));
     }
     let r = glslop_request(&state, &base, "POST", "/api/submit", Some(payload))?;
     let ok = r["status"].as_u64().map_or(false, |s| s < 400);

@@ -11,6 +11,7 @@
 //!    registry (`bridge:call` event -> `bridge_reply` command). See docs/AGENT-API.md.
 
 mod auth;
+mod publish;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -85,7 +86,7 @@ impl BridgeReady {
     }
 }
 
-fn config_dir() -> PathBuf {
+pub(crate) fn config_dir() -> PathBuf {
     if let Ok(p) = std::env::var("GLSLOP_STUDIO_HOME") {
         return PathBuf::from(p);
     }
@@ -486,6 +487,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(auth::AuthState::default())
+        .manage(publish::PublishState::default())
         .register_uri_scheme_protocol("studio", |_ctx, req| {
             // studio://localhost/<area>/<path>  (Windows: http://studio.localhost/<area>/<path>)
             // Serves the user's studio folders to the webview: mods (ES modules), cache (thumbnails,
@@ -555,7 +557,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            boot_info, relaunch, bridge_ready, bridge_reply, confirm_native, probe_start, probe_stop,
+            boot_info, relaunch, bridge_ready, bridge_reply, confirm_native, probe_start, probe_stop, publish::publish_view, publish::publish_decide,
             auth::auth_sign_in, auth::auth_status, auth::auth_sign_out, auth::glslop_api, auth::glslop_publish, fs_read_text, fs_write_text, fs_write_base64, fs_write_bytes, fs_list, fs_mkdir, fs_remove, fs_exists
         ])
         .build(tauri::generate_context!())

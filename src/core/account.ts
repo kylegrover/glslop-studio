@@ -69,7 +69,7 @@ const mod: StudioMod = {
 
     studio.tools.add({
       name: 'publish',
-      description: 'Publish a shader to glslop.com as the signed-in user. Always asks the human in a native dialog first. ' +
+      description: 'Publish a shader to glslop.com as the signed-in user. Always asks the human first, in a confirmation window that shows every field being sent. ' +
         'If not signed in (or draft:true), stages an anonymous draft and returns a review URL instead.',
       input: {
         type: 'object',
@@ -87,8 +87,14 @@ const mod: StudioMod = {
         const isf: string = await studio.state.gl.sourceOf(args);
         ctx.progress('compiling + rendering poster…');
         const p = await poster(isf);
+        // What Windows Chrome visitors will pay: the measured browser gauge if we have one, else the estimate.
+        const w = studio.state.weight;
+        const b = w ? await w.probe(isf, 'publish').catch(() => null) : null;
         const budget = loopBudget(isf);
-        const fxc = budget.inlined >= 4000 ? 'over 10 s' : budget.inlined >= 1000 ? 'several seconds' : budget.inlined >= 400 ? 'over 500 ms' : 'fast';
+        const est = budget.inlined >= 4000 ? 'over 10 s' : budget.inlined >= 1000 ? 'several seconds' : budget.inlined >= 400 ? 'over 500 ms' : 'under 500 ms';
+        const browserLine = b?.ms != null && b.kind === 'measured'
+          ? `Opens in about ${b.ms >= 1000 ? (b.ms / 1000).toFixed(1) + ' s' : b.ms + ' ms'} in Chrome on Windows (measured). ${b.ms < 500 ? 'It autoplays on glslop.com.' : 'Over 500 ms, so on glslop.com it starts on a click.'}`
+          : `Estimated to open in ${est} in Chrome on Windows.`;
         const meta = {
           title: String(args.title).slice(0, 120), tags: (args.tags ?? []).slice(0, 8), parents: args.parents, supersedes: args.supersedes,
           generator: args.generator, made_with: args.made_with ?? 'glslop studio',
@@ -106,7 +112,7 @@ const mod: StudioMod = {
         const r = (await inv!('glslop_publish', {
           base: base(),
           payload: { isf, compile_ok: true, poster: p.png, render_hash: p.hash, ...meta },
-          note: `On Windows Chrome (D3D11) this likely compiles ${fxc === 'fast' ? 'fast' : 'in ' + fxc} (~${budget.inlined} inlined statements).`,
+          note: browserLine,
           byAgent: ctx.caller === 'bridge',
         })) as { published: boolean; reason?: string; status?: number; body?: any };
         if (!r.published) {
