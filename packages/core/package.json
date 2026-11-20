@@ -1,6 +1,6 @@
 {
   "name": "@glslop/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "glslop's ISF shader engine: parser, WebGL2 runtime, compile-cost estimator, feature extraction, video export. Framework-free, browser and worker safe.",
   "keywords": [
     "isf",

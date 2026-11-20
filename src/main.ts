@@ -36,6 +36,7 @@ async function boot() {
   (studio as any).coreMods = CORE;
   try { studio.settings = JSON.parse(await host.readText(host.paths.settings)); } catch { studio.settings = {}; }
   runtimeConfig.posterBase = studio.settings.glslopBase ?? 'https://glslop.com';
+  runtimeConfig.captureTranslated = true; // gpu.compile {translated} and the advisor read it
 
   registerModTools(studio, CORE);
   await loadCoreMods(studio, CORE);

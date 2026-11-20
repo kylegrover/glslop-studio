@@ -60,7 +60,11 @@ interface ImageInput {
 //  textureUrl      overrides where a source shader's still is fetched (e.g. a local cache).
 //  blockingCompile skips KHR_parallel_shader_compile, so load() blocks in the link-status query for
 //                  exactly as long as the driver works (cost probes; timers throttle in hidden windows).
-export const runtimeConfig: { posterBase: string; textureUrl?: (shaderId: string) => string; blockingCompile?: boolean } = { posterBase: '' };
+//  captureTranslated keeps the driver's translated source (WEBGL_debug_shaders) in lastCompile. Off by
+//                  default: for heavy shaders it is a large string copy on every compile.
+export const runtimeConfig: {
+  posterBase: string; textureUrl?: (shaderId: string) => string; blockingCompile?: boolean; captureTranslated?: boolean;
+} = { posterBase: '' };
 export function posterTextureUrl(shaderId: string): string {
   return runtimeConfig.textureUrl?.(shaderId) ?? `${runtimeConfig.posterBase}/posters/${encodeURIComponent(shaderId)}.png`;
 }
@@ -70,7 +74,8 @@ export interface CompileRecord {
   fragmentSource: string;
   vertexSource: string;
   infoLog: string;
-  /** WEBGL_debug_shaders output (HLSL / SPIR-V-ish GLSL / MSL, depending on backend), when exposed. */
+  /** WEBGL_debug_shaders output (HLSL / SPIR-V-ish GLSL / MSL, by backend) when runtimeConfig.captureTranslated
+   *  is on and the browser exposes it; otherwise null. */
   translatedSource: string | null;
   /** ms from compileShader to COMPLETION_STATUS/first status query returning. */
   compileMs: number;
@@ -487,7 +492,7 @@ export class GlslopRenderer {
       return fail(['vertex: ' + (gl.getShaderInfoLog(vs) || 'unknown compile error')]);
     }
     const fsOk = !!gl.getShaderParameter(fs, gl.COMPILE_STATUS);
-    const dbg = gl.getExtension('WEBGL_debug_shaders');
+    const dbg = runtimeConfig.captureTranslated ? gl.getExtension('WEBGL_debug_shaders') : null;
     this.lastCompile = {
       fragmentSource: fragSrc, vertexSource: VERT, infoLog: gl.getShaderInfoLog(fs) || '',
       translatedSource: dbg && fsOk ? dbg.getTranslatedShaderSource(fs) : null,

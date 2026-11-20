@@ -49,6 +49,8 @@ Set once per JS realm (the page, and again inside each worker) before loading sh
 - `posterBase`: origin that shader posters (image inputs) are fetched from. `''` (default) means
   root-relative, which is right on glslop.com itself. Anywhere else, set `'https://glslop.com'`.
 - `textureUrl(shaderId)`: override where a source shader's still comes from, e.g. a local cache.
+- `captureTranslated`: keep the driver's translated source in `renderer.lastCompile` (off by default;
+  it is a large string for heavy shaders).
 - `blockingCompile`: skip `KHR_parallel_shader_compile`, so `load()` blocks for exactly the driver's
   time. Useful for cost measurements in hidden windows, where timers are throttled.
 
