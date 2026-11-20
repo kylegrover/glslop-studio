@@ -116,12 +116,14 @@
     compileErr = null; compileOk = true;
     return true;
   }
-  async function apply() {
-    if (compiling || !dirty) return;
+  async function apply(force = false) {
+    if (compiling) await compileIdle();
+    if (!dirty && !force) return;
     const next = source;
     if (await compile(next)) { applied = next; inputs = parseInputs(next); seedValues(true); }
     else if (renderer) { await renderer.load(applied); pushAll(); }
   }
+  const compileIdle = () => new Promise<void>((r) => { const t = () => (compiling ? setTimeout(t, 20) : r()); t(); });
   function revert() { source = applied; compileErr = null; compileOk = true; }
   function onEditorKeydown(e: KeyboardEvent) { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); void apply(); } }
 
@@ -173,7 +175,7 @@
       get id() { return shaderId; }, get title() { return filename; }, get source() { return source; },
       get values() { return currentInputs(); }, get errors() { return compileErr ? [compileErr] : []; }, get compileMs() { return compileMs; },
       get renderer() { return renderer; }, canvas: canvasEl,
-      setSource: async (src: string) => { source = src; await apply(); return { ok: compileOk, errors: compileErr ? [compileErr] : [], compileMs }; },
+      setSource: async (src: string) => { source = src; await apply(true); return { ok: compileOk, errors: compileErr ? [compileErr] : [], compileMs }; },
       setValue: (name: string, v: any) => {
         const inp = inputs.find((i) => i.NAME === name);
         if (!inp) return;
@@ -198,6 +200,20 @@
   function setLong(inp: ISFInput, e: Event) { const v = parseInt((e.target as HTMLInputElement).value, 10); disp[inp.NAME] = v; renderer?.setInputValue(inp.NAME, v); }
   function setBool(inp: ISFInput, e: Event) { const c = (e.target as HTMLInputElement).checked; bools[inp.NAME] = c; renderer?.setInputValue(inp.NAME, c); }
   function setColor(inp: ISFInput, e: Event) { const hex = (e.target as HTMLInputElement).value; colorHex[inp.NAME] = hex; renderer?.setInputValue(inp.NAME, fromHex(hex)); }
+  // ISF has no mouse uniform; the convention is a point2D input. Dragging on the canvas drives the first one.
+  const pointInput = () => inputs.find((i) => i.TYPE === 'point2D');
+  let dragging = false;
+  function pointerAt(e: PointerEvent) {
+    const inp = pointInput();
+    if (!inp) return;
+    const r = canvasEl.getBoundingClientRect();
+    const x = clamp01((e.clientX - r.left) / r.width), y = clamp01(1 - (e.clientY - r.top) / r.height);
+    disp[inp.NAME + '__x'] = x; disp[inp.NAME + '__y'] = y;
+    renderer?.setInputValue(inp.NAME, [x, y]);
+  }
+  function pointerDown(e: PointerEvent) { if (!pointInput() || e.button !== 0) return; dragging = true; canvasEl.setPointerCapture(e.pointerId); pointerAt(e); }
+  function pointerMove(e: PointerEvent) { if (dragging) pointerAt(e); }
+  function pointerUp() { dragging = false; }
   function setPoint(inp: ISFInput, idx: number, e: Event) {
     const v = parseFloat((e.target as HTMLInputElement).value);
     disp[inp.NAME + (idx ? '__y' : '__x')] = v;
@@ -208,7 +224,7 @@
 <div class="studio" class:expanded={codeExpanded}>
   <section class="col col-canvas">
     <div class="stage" class:fs={isFs} bind:this={wrapEl}>
-      <canvas bind:this={canvasEl}></canvas>
+      <canvas bind:this={canvasEl} class:draggable={!!pointInput()} onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp} onpointercancel={pointerUp}></canvas>
       {#if compiling}<div class="badge-live">compiling…</div>{/if}
       <div class="overlay" class:show={isFs} role="group" onmouseenter={() => (panelOpen = true)} onmouseleave={() => { if (!keepOpen) panelOpen = false; }}>
         <div class="ctl-left">
@@ -270,7 +286,7 @@
       </div>
       {#if compileErr}<pre class="compile-strip">{compileErr}</pre>{/if}
       <div class="code-actions">
-        <button class="btn apply" class:hot={dirty} onclick={apply} disabled={!dirty || compiling} title="apply (⌘↵ / Ctrl+↵)">{compiling ? 'compiling…' : 'apply ⌘↵'}</button>
+        <button class="btn apply" class:hot={dirty} onclick={() => apply()} disabled={!dirty || compiling} title="apply (⌘↵ / Ctrl+↵)">{compiling ? 'compiling…' : 'apply ⌘↵'}</button>
         <button class="btn" onclick={revert} disabled={!dirty}>revert</button>
         <button class="btn" onclick={copyIsf}>{copied ? 'copied ✓' : '⧉ copy'}</button>
         <button class="btn" onclick={saveFs} title="save to workspace/shaders">⤓ .fs</button>
@@ -309,7 +325,8 @@
   .studio.expanded { grid-template-columns: minmax(0, 1.8fr) 38px minmax(0, 2.5fr); }
   .col { min-width: 0; }
   .stage { position: relative; aspect-ratio: 1 / 1; width: 100%; max-height: min(78vh, 760px); background: #000; overflow: hidden; border: 2px solid var(--line); box-shadow: 6px 6px 0 var(--line); }
-  .stage canvas { width: 100%; height: 100%; display: block; object-fit: cover; }
+  .stage canvas { width: 100%; height: 100%; display: block; object-fit: cover; touch-action: none; }
+  .stage canvas.draggable { cursor: crosshair; }
   .badge-live { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.7); color: var(--slime); font-size: 11px; padding: 2px 6px; }
   .overlay { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; background: linear-gradient(to top, rgba(0,0,0,.6), rgba(0,0,0,0)); opacity: 0; transform: translateY(8px); transition: opacity .18s ease, transform .18s ease; pointer-events: none; }
   .stage:hover .overlay, .overlay.show, .overlay:focus-within { opacity: 1; transform: none; pointer-events: auto; }

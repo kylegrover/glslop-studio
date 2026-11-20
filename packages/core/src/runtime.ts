@@ -489,7 +489,10 @@ export class GlslopRenderer {
       compileMs: performance.now() - compileT0, parallelCompile: !!this.parallelExt,
     };
     if (!fsOk) {
-      return fail([cleanLog(gl.getShaderInfoLog(fs) || 'unknown compile error')]);
+      // Driver line numbers count the generated prelude; shift them to lines in the user's .fs file.
+      const preludeLines = fragSrc.split('\n').length - parsed.isf.body.split('\n').length;
+      const headerLines = isfSource.slice(0, isfSource.length - parsed.isf.body.length).split('\n').length - 1;
+      return fail([cleanLog(gl.getShaderInfoLog(fs) || 'unknown compile error', headerLines - preludeLines)]);
     }
     gl.deleteShader(vs);
     gl.deleteShader(fs);
@@ -809,9 +812,13 @@ export class GlslopRenderer {
   }
 }
 
-function cleanLog(log: string): string {
-  // GLSL logs are noisy; trim and prefix so the editor/agent shows something usable.
-  return 'compile: ' + log.split('\n').filter(Boolean).slice(0, 6).join(' / ');
+function cleanLog(log: string, lineShift = 0): string {
+  // GLSL logs are noisy; trim and prefix so the editor/agent shows something usable. "ERROR: 0:22:"
+  // becomes "line 9:", counted in the .fs file being edited (lineShift maps prelude lines away).
+  const lines = log.split('\n').filter(Boolean).slice(0, 6)
+    .map((l) => l.replace(/^(ERROR|WARNING): \d+:(\d+):\s*/, (_m, kind: string, n: string) =>
+      `${kind === 'WARNING' ? 'warning, ' : ''}line ${Math.max(1, +n + lineShift)}: `));
+  return 'compile: ' + lines.join(' / ');
 }
 
 // Headless one-shot used by the /render contract page (and poster generation).
