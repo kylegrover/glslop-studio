@@ -32,6 +32,7 @@ Likely candidates, in the order we expect them:
 ## Small fixes for 0.1.2 (when there's a reason to ship)
 
 - Second launch focuses the window but not the search box; focus it.
+- After an in-app update on Windows the app relaunches behind other windows; bring it to the front.
 - Linux AppImage: after an update the old launcher process stays until quit, and the file keeps its
   old version in its name. Cosmetic; comes from Tauri's AppImage updater.
 - Svelte `state_referenced_locally` warnings (50). Harmless; clean up when touching those files.
