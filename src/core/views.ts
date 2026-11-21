@@ -29,10 +29,12 @@ const mod: StudioMod = {
 
     // Opening a view mounts a new stage, which replaces studio.state.viewer. Wait for that (a file is
     // read first, so a fixed delay could hand back the previous shader), up to 3 s.
+    // A closed stage sets studio.state.viewer to null, so "replaced" means a new, non-null stage.
     const stageReplaced = async (before: unknown) => {
+      const fresh = () => !!studio.state.viewer && studio.state.viewer !== before;
       const t0 = performance.now();
-      while (studio.state.viewer === before && performance.now() - t0 < 3000) await new Promise((r) => setTimeout(r, 20));
-      return studio.state.viewer !== before;
+      while (!fresh() && performance.now() - t0 < 3000) await new Promise((r) => setTimeout(r, 20));
+      return fresh();
     };
     const viewer = async () => {
       if (!['viewer', 'shader', 'glsl'].includes(studio.state.activeView) || !studio.state.viewer) {
@@ -40,6 +42,7 @@ const mod: StudioMod = {
         studio.views.open('viewer', {});
         await stageReplaced(before);
       }
+      if (!studio.state.viewer) throw new Error('no editor is open and one did not open within 3 s');
       return studio.state.viewer;
     };
 
@@ -48,11 +51,14 @@ const mod: StudioMod = {
       description: 'Show a shader to the human: a corpus id opens its detail page; a file path or raw isf opens the editor.',
       input: { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' }, isf: { type: 'string' }, title: { type: 'string' } } },
       async run(args: any) {
+        // Fail before navigating, so a bad id or path leaves the human's current view alone.
+        if (args.path && !args.isf && !(await studio.host.exists(args.path))) throw new Error(`no such file: ${args.path}`);
+        if (args.id && !args.isf && !args.path && !studio.state.shader(args.id)) throw new Error(`no shader with id ${args.id} in the local corpus (run corpus.fetch?)`);
         const before = studio.state.viewer;
         studio.views.open(args.id && !args.isf && !args.path ? 'shader' : 'viewer', args);
-        const loaded = await stageReplaced(before);
+        if (!(await stageReplaced(before))) throw new Error('the editor did not open within 3 s');
         const v = studio.state.viewer;
-        return { title: v?.title, id: v?.id, loaded };
+        return { title: v.title, id: v.id, loaded: true };
       },
     });
 
@@ -80,11 +86,12 @@ const mod: StudioMod = {
 
     studio.tools.add({
       name: 'viewer.undo',
-      description: 'Put back what the editor held before the last viewer.setSource (up to 20 steps). The human has the same undo link next to the "updated by agent" badge.',
-      async run() {
+      description: 'Put back what the editor held before the last viewer.setSource (up to 20 steps). Refused if the human has typed since (same rule as setSource); force:true overrides. The human has an "undo update" link in the code pane.',
+      input: { type: 'object', properties: { force: { type: 'boolean' } } },
+      async run(args: { force?: boolean }) {
         const v = studio.state.viewer;
         if (!v?.undo) return { undone: false, note: 'no viewer open' };
-        return v.undo();
+        return v.undo(!!args.force);
       },
     });
 

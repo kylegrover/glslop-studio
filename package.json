@@ -14,7 +14,8 @@
     "app:build": "tauri build",
     "mcp": "node bin/glslop-studio-mcp.mjs",
     "studio": "node bin/studio.mjs",
-    "test": "tsx --conditions=glslop-source --test tests/*.test.ts"
+    "test": "tsx --conditions=glslop-source --test tests/*.test.ts",
+    "test:app": "node tests/app/run.mjs"
   },
   "dependencies": {
     "@glslop/core": "^0.1.0",

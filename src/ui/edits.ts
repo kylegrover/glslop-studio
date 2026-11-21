@@ -20,6 +20,28 @@ export function shaderFileName(title: string): string {
   return `${base || 'shader'}.fs`;
 }
 
+/** Where a document came from. Its autosave belongs to it, not to its title. */
+export type DocSource = { path: string } | { forkOf: string } | { title: string };
+
+/** Short, stable hash (FNV-1a, 32-bit), for file names. Not for security. */
+function hash8(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * The autosave file for a document: readable name plus a hash of its identity, so two files that are
+ * both called main.fs (in different folders) never share, or delete, each other's autosave.
+ * Paths compare case- and slash-insensitively (Windows).
+ */
+export function autosaveName(doc: DocSource, title: string): string {
+  const id = 'path' in doc ? `path:${doc.path.replace(/\\/g, '/').toLowerCase()}`
+    : 'forkOf' in doc ? `fork:${doc.forkOf}`
+    : `title:${doc.title}`;
+  return `${shaderFileName(title).replace(/\.fs$/, '')}-${hash8(id)}.fs`;
+}
+
 /**
  * What to do with an autosaved copy when a shader is opened:
  *  'none'    nothing was autosaved, or it matches what is being opened

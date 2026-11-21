@@ -60,9 +60,14 @@
   let history = $state<{ source: string; from: string; at: number }[]>([]);
   const HISTORY_MAX = 20;
   let lastOutside: string | null = null; // what the last outside update set (see humanEdits)
-  async function undoUpdate() {
+  // `from` is who asked: the human's own undo link always works; an agent's undo is refused while
+  // the human has typed since the update (same rule as setSource), unless forced.
+  async function undoUpdate(from: 'you' | 'agent' = 'you', force = false): Promise<boolean> {
     const prev = history[history.length - 1];
     if (!prev) return false;
+    if (from !== 'you' && !force && humanEdits(source, applied, lastOutside)) {
+      throw new Error('the human has edited since that update. Read their text with viewer.getSource first, or pass force:true (their edits are then lost).');
+    }
     history = history.slice(0, -1);
     source = prev.source; lastOutside = null; await apply(true);
     agentFlash = null;
@@ -208,7 +213,7 @@
       studio.events.on('export:start', () => { if (!paused) togglePlay(); }),
     ];
     // Agents drive the page through studio.state.viewer (same contract as the scratch editor).
-    studio.state.viewer = {
+    const handle = {
       get id() { return shaderId; }, get title() { return filename; }, get source() { return source; },
       get values() { return currentInputs(); }, get errors() { return compileErr ? [compileErr] : []; }, get compileMs() { return compileMs; },
       get renderer() { return renderer; }, canvas: canvasEl,
@@ -225,7 +230,7 @@
       },
       get weight() { return { fps, desktop: wDesktop, browser: wBrowser, measuring: wBusy }; },
       get dirty() { return humanEdits(source, applied, lastOutside); }, get undoDepth() { return history.length; },
-      undo: async () => ({ undone: await undoUpdate(), ok: compileOk, errors: compileErr ? [compileErr] : [], undoDepth: history.length }),
+      undo: async (force = false) => ({ undone: await undoUpdate('agent', force), ok: compileOk, errors: compileErr ? [compileErr] : [], undoDepth: history.length }),
       setValue: (name: string, v: any) => {
         const inp = inputs.find((i) => i.NAME === name);
         if (!inp) return;
@@ -238,7 +243,11 @@
       play: (on = true) => { if (on === paused) togglePlay(); },
       snapshot: () => canvasEl.toDataURL('image/png'),
     };
+    studio.state.viewer = handle;
     return () => {
+      // A closed stage must not keep answering agent calls. Only clear it if it is still ours: the
+      // next stage may already have mounted.
+      if (studio.state.viewer === handle) studio.state.viewer = null;
       cancelAnimationFrame(raf); ro.disconnect();
       document.removeEventListener('fullscreenchange', onFs); document.removeEventListener('visibilitychange', onVis);
       offExport.forEach((o) => o());
@@ -327,7 +336,8 @@
               <button class="jump-btn" onclick={() => codeArea?.scrollToChar(bodyStartIndex(source), true)}>↓ code</button>
             </span>
           {/if}
-          {#if agentFlash}<span class="agent-badge">{agentFlash}{#if history.length} · <button class="undo-btn" onclick={undoUpdate} title="put back what was here before this update">undo</button>{/if}</span>{/if}
+          {#if agentFlash}<span class="agent-badge">{agentFlash}</span>{/if}
+          {#if history.length}<button class="undo-btn" onclick={() => undoUpdate('you')} title="put back what was here before the last outside update ({history.length} step{history.length === 1 ? '' : 's'})">↶ undo update</button>{/if}
           {#if dirty}<span class="dirty">edited</span>{/if}
           <span class={compileOk ? 'compile-ok' : 'compile-bad'}>{compileOk ? 'compiles ✓' : 'broken ✗'}</span>
           <button class="expand-btn" onclick={() => (codeExpanded = !codeExpanded)}>{codeExpanded ? '⛶ collapse' : '⛶ expand'}</button>
@@ -418,7 +428,7 @@
   .agent-badge { background: var(--slime); color: #000; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; white-space: nowrap; }
   .col-code.agent-flash { animation: agentflash 1.6s ease-out; }
   @keyframes agentflash { 0% { box-shadow: 0 0 0 4px var(--slime), 3px 3px 0 rgba(0,0,0,.25); } 100% { box-shadow: 0 0 0 0 transparent, 3px 3px 0 rgba(0,0,0,.25); } }
-  .undo-btn { all: unset; cursor: pointer; text-decoration: underline; }
+  .undo-btn { all: unset; cursor: pointer; font-size: 10px; text-transform: uppercase; text-decoration: underline; }
   .dirty { background: var(--magenta); color: #fff; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; }
   .compile-strip { margin: 6px 8px 0; padding: 6px 8px; background: var(--warn); color: #fff; font-size: 11px; line-height: 1.35; max-height: 90px; overflow: auto; white-space: pre-wrap; border: 2px solid var(--line); }
   .code-actions { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px; }

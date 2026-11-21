@@ -1,6 +1,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { autosaveAction, humanEdits, shaderFileName, unappliedEdits } from '../src/ui/edits';
+import { autosaveAction, autosaveName, humanEdits, shaderFileName, unappliedEdits } from '../src/ui/edits';
+
+test('two documents with the same title never share an autosave', () => {
+  const a = autosaveName({ path: 'C:/proj-a/main.fs' }, 'main.fs');
+  const b = autosaveName({ path: 'C:/proj-b/main.fs' }, 'main.fs');
+  assert.notEqual(a, b);
+  assert.match(a, /^main-[0-9a-f]{8}\.fs$/);
+  // the same file, spelled with other slashes or case (Windows), is the same document
+  assert.equal(a, autosaveName({ path: 'c:\\PROJ-A\\main.fs' }, 'main.fs'));
+  // a fork, raw isf and a file with one title are three different documents
+  const names = new Set([
+    autosaveName({ forkOf: 'abc12345' }, 'main.fs'),
+    autosaveName({ title: 'main.fs' }, 'main.fs'),
+    a,
+  ]);
+  assert.equal(names.size, 3);
+  // forks of two different shaders that happen to share a title
+  assert.notEqual(autosaveName({ forkOf: 'aaaa' }, 'x (fork)'), autosaveName({ forkOf: 'bbbb' }, 'x (fork)'));
+  // always a plain file name
+  assert.doesNotMatch(autosaveName({ title: '../../etc/x' }, '../../etc/x'), /[\\/]/);
+});
 
 test('unappliedEdits ignores line endings and nothing else', () => {
   assert.equal(unappliedEdits('a\nb', 'a\nb'), false);

@@ -7,7 +7,7 @@
   import VideoExport from '@glslop/ui/VideoExport.svelte';
   import { exportAdapters } from './adapters';
   import { fmtMs, speedClass } from './format';
-  import { autosaveAction, shaderFileName } from './edits';
+  import { autosaveAction, autosaveName, shaderFileName, type DocSource } from './edits';
 
   let { studio, params }: { studio: Studio; params: Record<string, any> } = $props();
   const SCRATCH = `/*{
@@ -22,11 +22,16 @@ void main(){
 `;
   const scratchPath = `${studio.host.paths.workspace}/scratch.fs`;
   // Anything that isn't the scratch buffer is autosaved here while it differs from what was opened.
-  const autosavePath = (t: string) => `${studio.host.paths.workspace}/autosave/${shaderFileName(t)}`;
+  // Keyed by where the document came from (file path, forked shader id, or the title of raw isf), so
+  // two documents with the same title never share one.
+  const autosavePath = (doc: DocSource, t: string) => `${studio.host.paths.workspace}/autosave/${autosaveName(doc, t)}`;
+  let doc: DocSource = { title: 'scratch' };
   let recovered = $state<string | null>(null);
   let autosaved = false;
+  let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
+  let autosaveFailed = false;
   function restoreAutosave() { if (recovered === null) return; initial = recovered; recovered = null; key++; }
-  function discardAutosave() { recovered = null; studio.host.remove(autosavePath(title)).catch(() => {}); }
+  function discardAutosave() { recovered = null; studio.host.remove(autosavePath(doc, title)).catch(() => {}); }
   let initial = $state<string | null>(null);
   let title = $state<string>(params.title ?? 'scratch');
   let current = '';
@@ -60,14 +65,15 @@ void main(){
     // the editor, and the `key++` after it would mount it again: a second compile, and anything typed
     // in between lost.
     const mine = ++loadSeq;
-    let src: string, name: string;
-    if (p.isf) { src = p.isf; name = p.title ?? 'untitled'; }
-    else if (p.path) { src = await studio.host.readText(p.path); name = p.path.split(/[\\/]/).pop(); }
-    else if (p.id) { const s = studio.state.shader(p.id); src = s?.isf ?? SCRATCH; name = `${s?.title ?? p.id} (fork)`; }
-    else { src = await studio.host.readText(scratchPath).catch(() => SCRATCH); name = 'scratch'; }
-    const saved = name === 'scratch' ? null : await studio.host.readText(autosavePath(name)).catch(() => null);
+    let src: string, name: string, d: DocSource;
+    if (p.path) { src = await studio.host.readText(p.path); name = p.path.split(/[\\/]/).pop(); d = { path: p.path }; }
+    else if (p.isf) { src = p.isf; name = p.title ?? 'untitled'; d = p.forkOf ? { forkOf: p.forkOf } : { title: name }; }
+    else if (p.id) { const s = studio.state.shader(p.id); src = s?.isf ?? SCRATCH; name = `${s?.title ?? p.id} (fork)`; d = { forkOf: p.id }; }
+    else { src = await studio.host.readText(scratchPath).catch(() => SCRATCH); name = 'scratch'; d = { title: 'scratch' }; }
+    const saved = name === 'scratch' ? null : await studio.host.readText(autosavePath(d, name)).catch(() => null);
     if (mine !== loadSeq) return; // a newer open overtook this one
-    initial = src; title = name;
+    clearTimeout(autosaveTimer);
+    initial = src; title = name; doc = d;
     forkOf = p.forkOf ?? p.id ?? null;
     pubTitle = title.replace(/ \(fork\)$/, '');
     autosaved = false;
@@ -80,12 +86,23 @@ void main(){
     clearTimeout(adviceTimer);
     adviceTimer = setTimeout(async () => {
       advice = await studio.call('advise', { isf: src }, { caller: 'ui' }).catch(() => null);
-      if (title === 'scratch') { studio.host.writeText(scratchPath, src).catch(() => {}); return; }
-      // Don't overwrite an autosave the human hasn't decided about yet.
-      if (recovered !== null || initial === null) return;
-      if (src !== initial) { autosaved = true; studio.host.writeText(autosavePath(title), src).catch(() => {}); }
-      else if (autosaved) { autosaved = false; studio.host.remove(autosavePath(title)).catch(() => {}); }
     }, 600);
+    // Saving doesn't wait for the advisor (a slow advise must not delay or skip it).
+    clearTimeout(autosaveTimer);
+    const d = doc, t = title, opened = initial;
+    autosaveTimer = setTimeout(() => {
+      const fail = (e: unknown) => {
+        if (autosaveFailed) return;
+        autosaveFailed = true;
+        studio.toast(`autosave failed: ${(e as Error)?.message ?? e}`, 'error');
+      };
+      const ok = () => { autosaveFailed = false; };
+      if (t === 'scratch') { studio.host.writeText(scratchPath, src).then(ok, fail); return; }
+      // Don't overwrite an autosave the human hasn't decided about yet.
+      if (recovered !== null || opened === null) return;
+      if (src !== opened) { autosaved = true; studio.host.writeText(autosavePath(d, t), src).then(ok, fail); }
+      else if (autosaved) { autosaved = false; studio.host.remove(autosavePath(d, t)).catch(() => {}); }
+    }, 500);
   }
 
   async function openFile() {
