@@ -565,19 +565,20 @@ pub fn run() {
                 paths: p,
             })));
 
-            let mut b = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            let b = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title(format!("glslop studio · {backend}"))
                 .inner_size(1440.0, 920.0)
                 .min_inner_size(720.0, 480.0)
                 // GLSLOP_STUDIO_HIDDEN=1: no visible window (tests, agents driving it over the bridge).
                 .visible(std::env::var_os("GLSLOP_STUDIO_HIDDEN").is_none());
             // WebView2 refuses to share a user-data folder between different browser args, so give
-            // every backend/cache combination its own profile. Harmless on other platforms.
+            // every backend/cache combination its own profile. Windows only: the other webviews take
+            // no browser args.
             #[cfg(windows)]
-            {
+            let b = {
                 let tag = format!("{backend}{}", if no_cache { "-nocache" } else { "" });
-                b = b.additional_browser_args(&args).data_directory(config_dir().join("webview").join(tag));
-            }
+                b.additional_browser_args(&args).data_directory(config_dir().join("webview").join(tag))
+            };
             b.build()?;
             Ok(())
         })
