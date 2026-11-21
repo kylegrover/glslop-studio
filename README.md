@@ -10,6 +10,8 @@ the heaviest shaders in the corpus reach their first frame roughly **10–200× 
 worst goes from 351 s to about 12 s), and near-instantly once the GPU driver has cached them. Every
 shader compiles. See [docs/COMPILE-COST.md](docs/COMPILE-COST.md).
 
+Current release, what's next and what's parked: [ROADMAP.md](ROADMAP.md). How to ship one: [RELEASING.md](RELEASING.md).
+
 ## Run
 
 ```sh

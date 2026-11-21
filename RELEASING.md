@@ -3,10 +3,12 @@
 1. Bump `version` in `package.json`. That is the only place: Tauri and the app both read it from there.
 2. `git tag vX.Y.Z && git push --tags`. A tag with a hyphen (`v0.2.0-beta.1`) is published as a
    prerelease.
-3. The `release` workflow builds Windows (NSIS), macOS (universal, ad-hoc signed) and Linux
-   (AppImage/deb). It uploads them to a **draft** GitHub Release along with signed updater
-   artifacts and `latest.json`.
-4. Check the draft, then publish it. Installed apps pick it up at their next launch, or within a few
+3. The `release` workflow first runs the full CI (`ci.yml`: web checks, Rust lint/tests, audits), then
+   builds Windows (NSIS), macOS (universal, ad-hoc signed) and Linux (AppImage/deb/rpm). It uploads
+   them to a **draft** GitHub Release along with signed updater artifacts and `latest.json`.
+4. Check the draft (12 files; every platform in `latest.json` signed), then publish it. For a stable
+   release, set the notes on both the release and `latest.json` (the update prompt shows the latter):
+   edit the downloaded `latest.json`'s `notes` and re-upload it with `gh release upload --clobber`. Installed apps pick it up at their next launch, or within a few
    hours if they are left open: they check `https://glslop.com/studio/latest.json`. That route on
    glslop.com redirects to `latest.json` in the newest release on the app's channel (it caches GitHub's
    answer for 10 minutes). If glslop.com is down, the app falls back to GitHub's own "latest" release,
@@ -21,6 +23,10 @@ The updater signing key lives outside the repo (`~/.tauri/glslop-studio.key` and
 file). It is also stored as the GitHub secrets `TAURI_SIGNING_PRIVATE_KEY` and
 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. **If the key is lost, installed apps can never update
 again.** Keep a backup in your password manager.
+
+Before a stable release: tag a beta, update an installed copy to it on Windows, macOS and Linux, and
+run `npm run test:app` on each (and `npm run test:publish` on Windows, which needs a local glslop dev
+server; see its header). 0.1.1 took three betas this way; each found something real.
 
 Unsigned builds:
 - **macOS:** the first launch needs System Settings → Privacy & Security → "Open Anyway". Or run
