@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { Studio } from '../studio/api';
+  import { updateChannel } from '../core/updates';
   let { studio }: { studio: Studio } = $props();
 
   const boot = studio.host.boot;
@@ -16,6 +17,22 @@
   let autoSync = $state(studio.settings.autoSync !== false);
   let syncMin = $state(studio.settings.syncIntervalMin ?? 15);
   let stats = $state<any>(null);
+  // updates: the checkbox shows the channel in effect (a beta build follows betas unless told not to)
+  let autoUpdate = $state(studio.settings.autoUpdate !== false);
+  let betaUpdates = $state(updateChannel(studio.settings, studio.version) === 'beta');
+  let updBusy = $state(false);
+  let updMsg = $state<string | null>(null);
+  async function checkNow(install = false) {
+    updBusy = true; updMsg = install ? 'downloading…' : 'checking…';
+    try {
+      const r = await studio.call('app.checkUpdate', { install }, { caller: 'ui' });
+      updMsg = r.note === 'browser mode' ? 'updates need the desktop app'
+        : r.available ? `v${r.version} is available (${r.channel})` : `you're up to date (${r.channel})`;
+      updAvailable = !!r.available;
+    } catch (e) { updMsg = 'check failed: ' + (e as Error).message; }
+    finally { updBusy = false; }
+  }
+  let updAvailable = $state(!!studio.state.update);
   async function setSetting(k: string, v: unknown) { studio.settings[k] = v; await studio.saveSettings(); }
   async function refreshStats() {
     const c = studio.state.corpus;
@@ -94,6 +111,19 @@
     <button onclick={() => studio.call('thumbs.clear', {}, { caller: 'ui' }).then(refreshStats)}>clear thumbnails</button>
   </div>
   {#if stats}<pre class="env">{JSON.stringify(stats, null, 2)}</pre>{/if}
+
+  <h2>updates</h2>
+  <p class="muted">You have <b>v{studio.version}</b>. The app looks for a new version at launch and every few hours while it's open,
+    and shows an update button in the header. Nothing is downloaded until you click.</p>
+  <div class="row">
+    <button onclick={() => checkNow(false)} disabled={updBusy}>check for updates</button>
+    {#if updAvailable}<button onclick={() => checkNow(true)} disabled={updBusy}>install + restart</button>{/if}
+    {#if updMsg}<span>{updMsg}</span>{/if}
+  </div>
+  <div class="row">
+    <label><input type="checkbox" bind:checked={autoUpdate} onchange={() => setSetting('autoUpdate', autoUpdate)} /> check automatically</label>
+    <label><input type="checkbox" bind:checked={betaUpdates} onchange={() => setSetting('betaUpdates', betaUpdates)} /> beta updates (early builds, may be rough)</label>
+  </div>
 
   <h2>paths</h2>
   <table><tbody>

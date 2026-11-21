@@ -8,6 +8,7 @@
 import type { Studio, StudioMod } from '../studio/api';
 import { renderPosterFrame } from '@glslop/core/runtime';
 import { loopBudget } from '@glslop/core/budget';
+import { updateChannel, updateIntervalMs } from './updates';
 
 const mod: StudioMod = {
   description: 'Sign in with glslop, publish shaders, check for app updates.',
@@ -128,14 +129,21 @@ const mod: StudioMod = {
 
     studio.tools.add({
       name: 'app.checkUpdate',
-      description: 'Check for a new glslop studio release; install:true downloads, installs and restarts.',
+      description: 'Check for a new glslop studio release; install:true downloads, installs and restarts. Follows the stable channel unless the betaUpdates setting is on (or this copy is itself a beta).',
       input: { type: 'object', properties: { install: { type: 'boolean' } } },
       async run(args: { install?: boolean }, ctx) {
         if (!tauri) return { available: false, note: 'browser mode' };
         const { check } = await import('@tauri-apps/plugin-updater');
-        const u = await check();
-        if (!u) return { available: false, current: studio.version };
-        const info = { available: true, current: u.currentVersion, version: u.version, notes: u.body, date: u.date };
+        const channel = updateChannel(studio.settings, studio.version);
+        // The server offers stable builds unless asked; the header is how a copy asks for betas.
+        const u = await check({ headers: { 'x-glslop-channel': channel }, timeout: 30_000 });
+        studio.state.updateCheckedAt = new Date().toISOString();
+        if (!u) {
+          studio.state.update = null;
+          studio.events.emit('update:available', null);
+          return { available: false, current: studio.version, channel };
+        }
+        const info = { available: true, current: u.currentVersion, version: u.version, notes: u.body, date: u.date, channel };
         studio.state.update = info;
         studio.events.emit('update:available', info);
         if (!args.install) return info;
@@ -152,12 +160,19 @@ const mod: StudioMod = {
 
     studio.host.listen?.('auth:url', (url: string) => { studio.state.authUrl = url; studio.events.emit('auth:url', url); });
 
-    // Quietly check status + updates after boot (never blocks startup, never nags twice).
+    // Quietly check status + updates after boot (never blocks startup, never nags twice), then look
+    // for updates again every few hours: the app is often left open for days. Checking only shows the
+    // update button; nothing is downloaded until the human clicks it.
     if (tauri) {
+      const autoCheck = () => {
+        if (studio.settings.autoUpdate !== false && !import.meta.env.DEV) studio.call('app.checkUpdate').catch(() => {});
+      };
       setTimeout(() => {
         studio.call('account.status').catch(() => {});
-        if (studio.settings.autoUpdate !== false && !import.meta.env.DEV) studio.call('app.checkUpdate').catch(() => {});
+        autoCheck();
       }, 1500);
+      const timer = setInterval(autoCheck, updateIntervalMs(studio.settings));
+      return () => clearInterval(timer);
     }
   },
 };

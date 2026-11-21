@@ -54,19 +54,24 @@ void main(){
     finally { pubBusy = false; }
   }
 
+  let loadSeq = 0;
   async function load(p: Record<string, any>) {
-    if (p.isf) { initial = p.isf; title = p.title ?? 'untitled'; }
-    else if (p.path) { initial = await studio.host.readText(p.path); title = p.path.split(/[\\/]/).pop(); }
-    else if (p.id) { const s = studio.state.shader(p.id); initial = s?.isf ?? SCRATCH; title = `${s?.title ?? p.id} (fork)`; }
-    else { initial = await studio.host.readText(scratchPath).catch(() => SCRATCH); title = 'scratch'; }
+    // Read everything first, then show it in one step. Setting `initial` before an await would mount
+    // the editor, and the `key++` after it would mount it again: a second compile, and anything typed
+    // in between lost.
+    const mine = ++loadSeq;
+    let src: string, name: string;
+    if (p.isf) { src = p.isf; name = p.title ?? 'untitled'; }
+    else if (p.path) { src = await studio.host.readText(p.path); name = p.path.split(/[\\/]/).pop(); }
+    else if (p.id) { const s = studio.state.shader(p.id); src = s?.isf ?? SCRATCH; name = `${s?.title ?? p.id} (fork)`; }
+    else { src = await studio.host.readText(scratchPath).catch(() => SCRATCH); name = 'scratch'; }
+    const saved = name === 'scratch' ? null : await studio.host.readText(autosavePath(name)).catch(() => null);
+    if (mine !== loadSeq) return; // a newer open overtook this one
+    initial = src; title = name;
     forkOf = p.forkOf ?? p.id ?? null;
     pubTitle = title.replace(/ \(fork\)$/, '');
     autosaved = false;
-    recovered = null;
-    if (title !== 'scratch' && initial !== null) {
-      const saved = await studio.host.readText(autosavePath(title)).catch(() => null);
-      if (autosaveAction(initial, saved) === 'offer') recovered = saved;
-    }
+    recovered = autosaveAction(src, saved) === 'offer' ? saved : null;
     key++;
   }
 
