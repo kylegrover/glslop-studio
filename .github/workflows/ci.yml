@@ -1,0 +1,55 @@
+# Every push and pull request: typecheck, unit tests, web build, Rust lint + tests, dependency audits.
+# Releases have their own workflow (release.yml), which runs the same `check` job before building.
+#
+# Third-party actions are pinned to commit hashes (the comment names the version). Update them on
+# purpose, not by tag drift.
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run check # svelte-check, tsc, unit tests
+      - run: npm run build
+      - run: npm audit --omit=dev
+
+  rust:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with: { components: clippy }
+      - uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with: { workspaces: './src-tauri -> target' }
+      - name: linux deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libsecret-1-dev
+      # tauri::generate_context! needs the frontend folder to exist; its contents don't matter here.
+      - run: mkdir -p dist && echo '<!doctype html>' > dist/index.html
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: src-tauri
+      - run: cargo test
+        working-directory: src-tauri
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2
+        with: { tool: cargo-audit }
+      # Fails on vulnerabilities. "Unmaintained" notices on Tauri's Linux GTK stack are warnings.
+      - run: cargo audit
+        working-directory: src-tauri
