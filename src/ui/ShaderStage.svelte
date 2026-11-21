@@ -39,6 +39,13 @@
   const dirty = $derived(source !== applied);
   let compileErr = $state<string | null>(null);
   let compileOk = $state(true);
+  // A short visual beat on each compile after the first: a slime ring when it works, a shake when not.
+  let pop = $state<'ok' | 'bad' | null>(null), popTimer: ReturnType<typeof setTimeout> | undefined, compiles = 0;
+  function beat(kind: 'ok' | 'bad') {
+    if (compiles++ === 0) return;
+    pop = null; clearTimeout(popTimer);
+    requestAnimationFrame(() => { pop = kind; popTimer = setTimeout(() => (pop = null), 650); });
+  }
   let compiling = $state(false);
   let compileMs = $state<number | null>(null);
   let paused = $state(false);
@@ -137,8 +144,8 @@
     if (res.superseded) return false;
     onCompiled?.(compileMs, res.compileOk);
     studio.events.emit('viewer:compiled', { id: shaderId, ok: res.compileOk, compileMs, errors: res.errors, backend: studio.host.boot.angleBackend });
-    if (!res.compileOk) { compileErr = res.errors.join('\n') || 'compile failed'; compileOk = false; return false; }
-    compileErr = null; compileOk = true;
+    if (!res.compileOk) { compileErr = res.errors.join('\n') || 'compile failed'; compileOk = false; beat('bad'); return false; }
+    compileErr = null; compileOk = true; beat('ok');
     scheduleWeight(src);
     return true;
   }
@@ -282,7 +289,7 @@
 
 <div class="studio" class:expanded={codeExpanded}>
   <section class="col col-canvas">
-    <div class="stage" class:fs={isFs} bind:this={wrapEl}>
+    <div class="stage" class:fs={isFs} class:pop-ok={pop === 'ok'} class:pop-bad={pop === 'bad'} bind:this={wrapEl} data-hero={shaderId}>
       <canvas bind:this={canvasEl} class:draggable={!!pointInput()} onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp} onpointercancel={pointerUp}></canvas>
       {#if compiling}<div class="badge-live">compiling…</div>{/if}
       <div class="overlay" class:show={isFs} role="group" onmouseenter={() => (panelOpen = true)} onmouseleave={() => { if (!keepOpen) panelOpen = false; }}>
@@ -427,6 +434,13 @@
   .slider-row select { font-family: var(--mono); font-size: 12px; background: #fff; border: 2px inset #999; }
   .agent-badge { background: var(--slime); color: #000; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; white-space: nowrap; }
   .col-code.agent-flash { animation: agentflash 1.6s ease-out; }
+  :global(html:not([data-motion='off'])) .stage.pop-ok { animation: pop-ok .6s ease-out; }
+  :global(html[data-motion='full']) .stage.pop-bad { animation: pop-bad .45s cubic-bezier(.36,.07,.19,.97); }
+  :global(html[data-motion='calm']) .stage.pop-bad { box-shadow: 0 0 0 3px var(--warn); }
+  @keyframes pop-ok { 0% { box-shadow: 0 0 0 0 var(--slime); } 25% { box-shadow: 0 0 0 6px var(--slime); } 100% { box-shadow: 0 0 0 14px transparent; } }
+  @keyframes pop-bad { 10%, 90% { translate: -1px 0; } 20%, 80% { translate: 3px 0; } 30%, 50%, 70% { translate: -6px 0; } 40%, 60% { translate: 6px 0; } 0%, 100% { box-shadow: 0 0 0 3px var(--warn); } }
+  :global(html:not([data-motion='off'])) .compile-strip { animation: strip-in .25s ease-out; }
+  @keyframes strip-in { from { opacity: 0; translate: 0 -6px; } }
   @keyframes agentflash { 0% { box-shadow: 0 0 0 4px var(--slime), 3px 3px 0 rgba(0,0,0,.25); } 100% { box-shadow: 0 0 0 0 transparent, 3px 3px 0 rgba(0,0,0,.25); } }
   .undo-btn { all: unset; cursor: pointer; font-size: 10px; text-transform: uppercase; text-decoration: underline; }
   .dirty { background: var(--magenta); color: #fff; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; }

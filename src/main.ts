@@ -14,6 +14,7 @@ import { loadCoreMods, loadUserMods, registerModTools } from './studio/mods';
 import { startBridge } from './studio/bridge';
 import { runtimeConfig } from '@glslop/core/runtime';
 import Shell from './ui/Shell.svelte';
+import { applyMotion, resolveMotion } from './ui/motion';
 import corpus from './core/corpus';
 import gl from './core/gl';
 import bench from './core/bench';
@@ -35,6 +36,8 @@ async function boot() {
   (window as any).studio = studio;
   (studio as any).coreMods = CORE;
   try { studio.settings = JSON.parse(await host.readText(host.paths.settings)); } catch { studio.settings = {}; }
+  const motion = resolveMotion(studio.settings.motion, host.boot.platform, matchMedia('(prefers-reduced-motion: reduce)').matches);
+  applyMotion(motion);
   runtimeConfig.posterBase = studio.settings.glslopBase ?? 'https://glslop.com';
   runtimeConfig.captureTranslated = true; // gpu.compile {translated} and the advisor read it
 
@@ -61,10 +64,13 @@ async function boot() {
   const target = document.getElementById('app')!;
   if (typeof studio.state.mountShell === 'function') studio.state.mountShell(target, studio);
   else mount(Shell, { target, props: { studio } });
+  // The shell has drawn: let the splash leave (it keeps a short minimum so it doesn't flicker).
+  requestAnimationFrame(() => (window as any).__splash?.done(motion));
   await startBridge(studio);
   studio.state.bootMs = Math.round(performance.now() - bootT0);
 }
 
 boot().catch((e) => {
+  (window as any).__splash?.done('off');
   document.body.innerHTML = `<pre style="color:#ff3b1f;padding:12px;white-space:pre-wrap">studio failed to boot:\n${(e as Error).stack ?? e}</pre>`;
 });

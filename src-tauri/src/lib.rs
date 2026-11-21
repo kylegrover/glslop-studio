@@ -600,6 +600,8 @@ pub fn run() {
                 .title(format!("glslop studio · {backend}"))
                 .inner_size(1440.0, 920.0)
                 .min_inner_size(720.0, 480.0)
+                // The splash's colour, so the window never flashes white before index.html paints.
+                .background_color(tauri::webview::Color(11, 11, 16, 255))
                 // GLSLOP_STUDIO_HIDDEN=1: no visible window (tests, agents driving it over the bridge).
                 .visible(std::env::var_os("GLSLOP_STUDIO_HIDDEN").is_none());
             // WebView2 refuses to share a user-data folder between different browser args, so give

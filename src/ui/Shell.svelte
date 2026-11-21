@@ -4,6 +4,7 @@
   // studio.state.mountShell (docs/MODDING.md).
   import { onMount } from 'svelte';
   import type { Studio, View } from '../studio/api';
+  import { transitionViews } from './motion';
 
   let { studio }: { studio: Studio } = $props();
   let views = $state<View[]>([]);
@@ -35,14 +36,20 @@
     if (!v || !slot) return;
     if (push && (active !== id || JSON.stringify(params) !== JSON.stringify(p))) history.push({ id: active, params });
     if (history.length > 50) history.shift();
-    try { cleanup?.(); } catch (e) { console.error(e); }
-    slot.replaceChildren();
-    const el = document.createElement('div');
-    el.className = 'view-root';
-    slot.append(el);
-    active = id; params = p;
-    try { cleanup = v.mount(el, studio, p); }
-    catch (e) { el.textContent = `view "${id}" crashed: ${(e as Error).stack ?? e}`; }
+    // The shader being opened (or the one we're coming back from) morphs between its grid thumbnail
+    // and the stage. Only when motion is full and the webview has View Transitions.
+    const heroKey = (p.id as string | undefined) ?? (params.id as string | undefined) ?? null;
+    const swap = () => {
+      try { cleanup?.(); } catch (e) { console.error(e); }
+      slot.replaceChildren();
+      const el = document.createElement('div');
+      el.className = 'view-root';
+      slot.append(el);
+      active = id; params = p;
+      try { cleanup = v.mount(el, studio, p); }
+      catch (e) { el.textContent = `view "${id}" crashed: ${(e as Error).stack ?? e}`; }
+    };
+    transitionViews({ root: slot, swap, heroKey });
     studio.state.activeView = id;
     studio.state.activeParams = p;
     studio.events.emit('view:mounted', { id, params: p });
@@ -129,6 +136,16 @@
   .cc0 { font-weight: bold; }
   .progress { background: #000; color: var(--slime); padding: 0 6px; max-width: 50vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .toasts { position: fixed; right: 10px; bottom: 30px; display: grid; gap: 4px; z-index: 100; }
-  .toast { background: #ffe600; border: 2px solid var(--line); box-shadow: 4px 4px 0 var(--line); padding: 6px 10px; max-width: 460px; font-size: 12px; white-space: pre-wrap; }
+  .toast { animation: toast-in .32s cubic-bezier(.2,1.5,.4,1); background: #ffe600; border: 2px solid var(--line); box-shadow: 4px 4px 0 var(--line); padding: 6px 10px; max-width: 460px; font-size: 12px; white-space: pre-wrap; }
   .toast.error { background: var(--warn); color: #fff; }
+  @keyframes toast-in { from { transform: translateX(40px) rotate(3deg); opacity: 0; } }
+  :global(html[data-motion='off']) .toast { animation: none; }
+  :global(html[data-motion='full']) nav.main button:active { transform: translate(2px, 2px); }
+  :global(html[data-motion='full']) nav.main button.upd { animation: upd-pulse 2.4s ease-in-out infinite; }
+  @keyframes upd-pulse { 50% { box-shadow: 0 0 0 4px rgba(70, 255, 26, .35); } }
+  /* The shell's first appearance, as the splash leaves: header drops in, content rises. */
+  :global(html[data-motion='full']:not(.app-in)) .site-head { transform: translateY(-110%) rotate(0.3deg); }
+  :global(html[data-motion='full']) .site-head { transition: transform .5s cubic-bezier(.2,1.3,.4,1); }
+  :global(html[data-motion='full']:not(.app-in)) main { opacity: 0; transform: translateY(18px); }
+  :global(html[data-motion='full']) main { transition: opacity .4s ease-out .08s, transform .5s cubic-bezier(.2,1.2,.4,1) .08s; }
 </style>
