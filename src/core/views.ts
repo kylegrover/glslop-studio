@@ -142,6 +142,10 @@ const mod: StudioMod = {
     studio.commands.add({ id: 'goto.viewer', title: 'Viewer', key: 'Ctrl+2', run: (s) => s.views.open('viewer') });
     studio.commands.add({ id: 'goto.glsl', title: 'GLSL techniques', key: 'Ctrl+3', run: (s) => s.views.open('glsl') });
     studio.commands.add({ id: 'goto.bench', title: 'Bench', key: 'Ctrl+4', run: (s) => s.views.open('bench') });
+    // macOS quits with Cmd+Q from the system menu; Windows and Linux have no app menu, so add Ctrl+Q.
+    if (studio.host.invoke && studio.host.boot.platform !== 'macos') {
+      studio.commands.add({ id: 'app.quit', title: 'Quit', key: 'Ctrl+Q', run: (s) => { void s.host.invoke!('quit'); } });
+    }
   },
 };
 export default mod;

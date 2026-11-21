@@ -8,6 +8,7 @@ const COMMANDS: &[&str] = &[
     // boot + window
     "boot_info",
     "relaunch",
+    "quit",
     "confirm_native",
     // agent bridge (main window only; also checked in Rust)
     "bridge_ready",

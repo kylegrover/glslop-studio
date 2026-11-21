@@ -25,6 +25,7 @@
     "updater:default",
     "allow-boot-info",
     "allow-relaunch",
+    "allow-quit",
     "allow-confirm-native",
     "allow-bridge-ready",
     "allow-bridge-reply",

@@ -73,6 +73,12 @@ try {
   check('a closed editor no longer answers viewer calls', st.open === false && (await source()) === null, JSON.stringify(st));
 
   // ------------------------------------------------------------------------------------------------
+  await call('viewer.open', { isf: V1, title: 'guardtest' });
+  r = await call('viewer.setSource', { source: V2 });
+  check('wrong arguments get a plain error naming what the tool takes', /isf is required.*it takes: isf/.test(r.error ?? ''), r.error ?? JSON.stringify(r));
+  st = (await call('viewer.state')).result;
+  check('...and leave the editor working', st.title === 'guardtest.fs' && typeof st.sourceBytes === 'number', JSON.stringify(st));
+
   section('agent edits next to a human');
   await call('viewer.open', { isf: V1, title: 'guardtest' });
   r = await call('viewer.setSource', { isf: V2 });
@@ -138,6 +144,8 @@ try {
 
   // ------------------------------------------------------------------------------------------------
   section('updates');
+  // A beta build follows betas by default; pin stable explicitly so this works on any build.
+  await ev(`studio.settings.betaUpdates = false; await studio.saveSettings(); return 1`);
   r = await call('app.checkUpdate', {});
   check('update check works on the stable channel', r.result?.channel === 'stable' && typeof r.result?.available === 'boolean', JSON.stringify(r));
   await ev(`studio.settings.betaUpdates = true; await studio.saveSettings(); return 1`);
@@ -182,6 +190,18 @@ try {
   await ev(`for (let i = 0; i < 5; i++) Promise.reject(new Error('boom-test')); await new Promise(r => setTimeout(r, 300)); return 1`);
   const n = await ev(`return (studio.state.errors ?? []).filter(e => e.msg.includes('boom-test')).length`);
   check('an uncaught error is recorded once, not five times', n === 1, `count ${n}`);
+
+  // ------------------------------------------------------------------------------------------------
+  section('quit (last: it ends the app)');
+  const hasQuit = await ev(`return studio.commands.list().some(c => c.key === 'Ctrl+Q')`);
+  if (process.platform === 'darwin') check('macOS has no Ctrl+Q command (Cmd+Q comes from the system menu)', hasQuit === false);
+  else {
+    check('Ctrl+Q is a command', hasQuit === true);
+    await ev(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'q', ctrlKey: true, bubbles: true })); return 1`).catch(() => null);
+    const exited = await until(() => app.exitCode !== null || app.signalCode !== null, 8000);
+    check('pressing it quits the app', exited, `exit ${app.exitCode}`);
+    check('...and removes bridge.json', !existsSync(join(HOME, 'bridge.json')));
+  }
 } catch (e) {
   check('the run finished', false, e?.stack ?? e);
 } finally {

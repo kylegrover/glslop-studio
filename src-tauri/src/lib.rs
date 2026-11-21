@@ -260,6 +260,13 @@ fn relaunch(app: tauri::AppHandle) {
     app.restart();
 }
 
+/// Quit (Ctrl+Q on Windows/Linux; macOS gets Cmd+Q from the system menu). Main window only, by
+/// capability. A normal exit, so bridge.json is cleaned up and an open publish window counts as cancel.
+#[tauri::command]
+fn quit(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 // ---------------------------------------------------------------- publish confirmation
 
 /// Native confirm dialog; resolves to true only on a real click of the OK button.
@@ -501,6 +508,15 @@ pub fn run() {
                 let _ = w.unminimize();
                 let _ = w.show();
                 let _ = w.set_focus();
+                // GNOME (and other X11/Wayland window managers) refuse focus requests from a window
+                // the user didn't just click, so set_focus only marks it "demands attention". Briefly
+                // raising it above other windows does bring it to the front there.
+                #[cfg(target_os = "linux")]
+                {
+                    let _ = w.set_always_on_top(true);
+                    let _ = w.set_always_on_top(false);
+                    let _ = w.set_focus();
+                }
             }
         }));
     }
@@ -583,7 +599,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            boot_info, relaunch, bridge_ready, bridge_reply, confirm_native, probe_start, probe_stop, publish::publish_view, publish::publish_decide,
+            boot_info, relaunch, quit, bridge_ready, bridge_reply, confirm_native, probe_start, probe_stop, publish::publish_view, publish::publish_decide,
             auth::auth_sign_in, auth::auth_status, auth::auth_sign_out, auth::glslop_api, auth::glslop_publish, fs_read_text, fs_write_text, fs_write_base64, fs_write_bytes, fs_list, fs_mkdir, fs_remove, fs_exists
         ])
         .build(tauri::generate_context!())

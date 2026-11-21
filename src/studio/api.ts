@@ -7,6 +7,7 @@
 // See docs/MODDING.md for the contract. Keep this file small and boring: it is the stable part.
 
 import { host, type Host } from './host';
+import { argNames, argProblems } from './schema';
 
 declare const __APP_VERSION__: string; // package.json version, injected by vite.config.ts
 
@@ -141,6 +142,14 @@ export class Studio {
   async call<R = any>(name: string, args: any = {}, opts: Partial<ToolContext> = {}): Promise<R> {
     const tool = this.tools.get(name);
     if (!tool) throw new Error(`no tool named "${name}". Known: ${[...this.tools.items.keys()].join(', ')}`);
+    // Wrong arguments get a plain answer before the tool runs (and can't leave it half-done).
+    const problems = argProblems(args ?? {}, tool.input);
+    if (problems.length) {
+      const names = argNames(tool.input);
+      const e = new Error(`${name}: ${problems.join('; ')}${names.length ? ` (it takes: ${names.join(', ')})` : ''}`);
+      this.events.emit('tool:error', { name, args, caller: opts.caller ?? 'console', error: e.message });
+      throw e;
+    }
     const ctx: ToolContext = {
       studio: this, caller: opts.caller ?? 'console', signal: opts.signal,
       progress: opts.progress ?? ((msg, fraction) => this.events.emit('tool:progress', { tool: name, msg, fraction })),

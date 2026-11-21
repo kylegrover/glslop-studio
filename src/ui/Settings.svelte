@@ -92,8 +92,14 @@
   </div>
 
   <h2>data + caching</h2>
-  <p class="muted">Thumbnails render locally on your GPU (a cold Vulkan compile is a few ms), so glslop.com only serves
-    the slim shader list on sync, plus source once per new shader. Nothing else.</p>
+  {#if studio.state.thumbMode?.worker === false}
+    <p class="muted">Thumbnails are downloaded from glslop.com here (this system's webview can't render them in the
+      background), and only the shader under the mouse plays live. Sync still fetches just the slim shader list plus
+      source once per new shader.</p>
+  {:else}
+    <p class="muted">Thumbnails render locally on your GPU (a few ms each{boot.angleBackend === 'vulkan' ? ' on Vulkan' : ''}), so glslop.com
+      only serves the slim shader list on sync, plus source once per new shader. Nothing else.</p>
+  {/if}
   <div class="row">
     <label>thumbnails
       <select bind:value={thumbSource} onchange={() => setSetting('thumbSource', thumbSource)}>
