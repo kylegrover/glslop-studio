@@ -59,6 +59,8 @@ pub async fn ask(app: &tauri::AppHandle, view: Value) -> Result<bool, String> {
         .focused(true)
         .minimizable(false)
         .maximizable(false)
+        // A hidden test run keeps this window hidden too; the test clicks it through a debug port.
+        .visible(std::env::var_os("GLSLOP_STUDIO_HIDDEN").is_none())
         // Only the bundled page; never navigate anywhere else or open new windows.
         .on_navigation(|url| matches!(url.scheme(), "tauri" | "http" | "https") && url.host_str().is_some_and(|h| h == "tauri.localhost" || h == "localhost"))
         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
@@ -69,6 +71,13 @@ pub async fn ask(app: &tauri::AppHandle, view: Value) -> Result<bool, String> {
     {
         // Its own profile: nothing the main window stored (storage, caches, service workers) is shared.
         b = b.data_directory(crate::config_dir().join("webview").join("publish"));
+        // Tests only: a debug port on this window so a test can click approve/cancel. Honoured only
+        // by an isolated copy (its own GLSLOP_STUDIO_HOME), never by the real app.
+        if std::env::var_os("GLSLOP_STUDIO_HOME").is_some() {
+            if let Some(port) = std::env::var("GLSLOP_STUDIO_PUBLISH_DEBUG_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
+                b = b.additional_browser_args(&format!("--remote-debugging-port={port}"));
+            }
+        }
     }
     let win = match b.build() {
         Ok(w) => w,

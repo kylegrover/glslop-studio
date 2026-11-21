@@ -19,6 +19,19 @@ npm run dev          # UI only, in a browser at http://localhost:1420 (browser's
 npm run app:build    # installers
 ```
 
+## Test
+
+```sh
+npm run check                    # typecheck + unit tests (tests/*.test.ts)
+cd src-tauri && cargo test       # Rust unit tests
+npx tauri build --no-bundle      # then, against that build:
+npm run test:app                 # ~40 checks on a hidden, isolated copy (editing, autosave, updates, permissions)
+npm run test:publish             # sign-in + the real publish window, against a local glslop dev server
+```
+
+Both app tests use their own home folder and keychain entry, so they never touch your real app or
+sign-in. `test:publish` refuses anything but a localhost server; how to start one is in its header.
+
 Backend: **settings → graphics backend** (relaunches), or set `GLSLOP_ANGLE=d3d11|vulkan|gl|default` for
 one launch. `GLSLOP_NO_GPU_CACHE=1` disables Chromium's shader disk cache (the GPU driver keeps its own).
 macOS (Metal) and Linux (GL) ignore the ANGLE switch.
