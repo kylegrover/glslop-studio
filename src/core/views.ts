@@ -27,10 +27,18 @@ const mod: StudioMod = {
     studio.views.add({ id: 'shader', title: 'shader', hidden: true, mount: svelteView(ShaderPage) });
     studio.views.add({ id: 'settings', title: 'settings', order: 90, mount: svelteView(Settings) });
 
+    // Opening a view mounts a new stage, which replaces studio.state.viewer. Wait for that (a file is
+    // read first, so a fixed delay could hand back the previous shader), up to 3 s.
+    const stageReplaced = async (before: unknown) => {
+      const t0 = performance.now();
+      while (studio.state.viewer === before && performance.now() - t0 < 3000) await new Promise((r) => setTimeout(r, 20));
+      return studio.state.viewer !== before;
+    };
     const viewer = async () => {
       if (!['viewer', 'shader', 'glsl'].includes(studio.state.activeView) || !studio.state.viewer) {
+        const before = studio.state.viewer;
         studio.views.open('viewer', {});
-        await new Promise((r) => setTimeout(r, 50));
+        await stageReplaced(before);
       }
       return studio.state.viewer;
     };
@@ -40,21 +48,21 @@ const mod: StudioMod = {
       description: 'Show a shader to the human: a corpus id opens its detail page; a file path or raw isf opens the editor.',
       input: { type: 'object', properties: { id: { type: 'string' }, path: { type: 'string' }, isf: { type: 'string' }, title: { type: 'string' } } },
       async run(args: any) {
+        const before = studio.state.viewer;
         studio.views.open(args.id && !args.isf && !args.path ? 'shader' : 'viewer', args);
-        await new Promise((r) => setTimeout(r, 50));
+        const loaded = await stageReplaced(before);
         const v = studio.state.viewer;
-        await new Promise((r) => setTimeout(r, 0));
-        return { title: v?.title, id: v?.id };
+        return { title: v?.title, id: v?.id, loaded };
       },
     });
 
     studio.tools.add({
       name: 'viewer.setSource',
-      description: 'Replace the live viewer\'s source (hot reload). The human sees it immediately, with an "updated by agent" flash. Returns the compile result; pass weight:true to also get the gauges (desktop + browser/d3d11 compile-to-first-frame; glslop.com autoplays under 500 ms).',
-      input: { type: 'object', properties: { isf: { type: 'string' }, title: { type: 'string' }, weight: { type: 'boolean' } }, required: ['isf'] },
-      async run(args: { isf: string; title?: string; weight?: boolean }, ctx) {
+      description: 'Replace the live viewer\'s source (hot reload). The human sees it immediately, with an "updated by agent" flash and an undo link. Refused if the human has unapplied edits (viewer.state says dirty): read them with viewer.getSource and merge, or pass force:true. Returns the compile result; pass weight:true to also get the gauges (desktop + browser/d3d11 compile-to-first-frame; glslop.com autoplays under 500 ms).',
+      input: { type: 'object', properties: { isf: { type: 'string' }, title: { type: 'string' }, weight: { type: 'boolean' }, force: { type: 'boolean' } }, required: ['isf'] },
+      async run(args: { isf: string; title?: string; weight?: boolean; force?: boolean }, ctx) {
         const v = await viewer();
-        const r = await v.setSource(args.isf, args.title, ctx.caller === 'ui' ? 'you' : 'agent');
+        const r = await v.setSource(args.isf, args.title, ctx.caller === 'ui' ? 'you' : 'agent', !!args.force);
         if (!args.weight || !r.ok || !studio.state.weight) return r;
         return { ...r, weight: await studio.call('weight.measure', { isf: args.isf }, { caller: ctx.caller }) };
       },
@@ -66,7 +74,17 @@ const mod: StudioMod = {
       async run() {
         const v = studio.state.viewer;
         if (!v) return { open: false };
-        return { open: studio.state.activeView === 'viewer', id: v.id, title: v.title, values: v.values, errors: v.errors, compileMs: v.compileMs, sourceBytes: v.source.length, weight: v.weight ?? null };
+        return { open: studio.state.activeView === 'viewer', id: v.id, title: v.title, values: v.values, errors: v.errors, compileMs: v.compileMs, sourceBytes: v.source.length, dirty: !!v.dirty, undoDepth: v.undoDepth ?? 0, weight: v.weight ?? null };
+      },
+    });
+
+    studio.tools.add({
+      name: 'viewer.undo',
+      description: 'Put back what the editor held before the last viewer.setSource (up to 20 steps). The human has the same undo link next to the "updated by agent" badge.',
+      async run() {
+        const v = studio.state.viewer;
+        if (!v?.undo) return { undone: false, note: 'no viewer open' };
+        return v.undo();
       },
     });
 

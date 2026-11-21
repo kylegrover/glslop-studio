@@ -60,7 +60,7 @@ pub async fn ask(app: &tauri::AppHandle, view: Value) -> Result<bool, String> {
         .minimizable(false)
         .maximizable(false)
         // Only the bundled page; never navigate anywhere else or open new windows.
-        .on_navigation(|url| matches!(url.scheme(), "tauri" | "http" | "https") && url.host_str().map_or(false, |h| h == "tauri.localhost" || h == "localhost"))
+        .on_navigation(|url| matches!(url.scheme(), "tauri" | "http" | "https") && url.host_str().is_some_and(|h| h == "tauri.localhost" || h == "localhost"))
         .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
     if let Some(m) = &main {
         b = b.parent(m).map_err(|e| e.to_string())?;
@@ -156,4 +156,37 @@ pub fn view_model(payload: &Value, handle: &str, base: &str, note: Option<&str>,
             .filter(|k| !["isf", "title", "tags", "parents", "supersedes", "made_with", "generator", "poster", "compile_ok", "render_hash"].contains(&k.as_str()))
             .cloned().collect::<Vec<_>>()),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn view_model_shows_every_field_and_names_the_ones_it_does_not_know() {
+        let payload = json!({
+            "isf": "/*{}*/
+void main(){}
+", "title": "t", "tags": ["a"], "compile_ok": true,
+            "poster": "data:image/png;base64,AAAA", "sneaky": 1, "made_with_app": "x",
+        });
+        let v = view_model(&payload, "me", "https://glslop.com", Some("note"), true);
+        assert_eq!(v["title"], "t");
+        assert_eq!(v["handle"], "me");
+        assert_eq!(v["server"], "https://glslop.com");
+        assert_eq!(v["source_lines"], 2);
+        assert_eq!(v["by_agent"], true);
+        assert_eq!(v["poster"], "data:image/png;base64,AAAA");
+        let mut other: Vec<String> = v["other_fields"].as_array().unwrap().iter().map(|x| x.as_str().unwrap().to_string()).collect();
+        other.sort();
+        assert_eq!(other, ["made_with_app", "sneaky"]);
+    }
+
+    #[test]
+    fn view_model_never_shows_a_poster_that_is_not_a_png_data_url() {
+        for poster in ["https://evil.example/x.png", "data:text/html;base64,AAAA", "javascript:alert(1)"] {
+            let v = view_model(&json!({ "isf": "x", "poster": poster }), "me", "https://glslop.com", None, false);
+            assert!(v["poster"].is_null(), "{poster}");
+        }
+    }
 }

@@ -108,7 +108,7 @@ const mod: StudioMod = {
       for (const id of ids) {
         const p = joinPath(texDir, `${id}.png`);
         if (!(await studio.host.exists(p))) {
-          const r = await fetch(`${base}/posters/${encodeURIComponent(id)}.png`);
+          const r = await fetch(`${base}/posters/${encodeURIComponent(id)}.png`, { signal: AbortSignal.timeout(30_000) });
           if (r.ok) await studio.host.writeBytes(p, new Uint8Array(await r.arrayBuffer()));
         }
         map[id] = studio.host.fileUrl('cache', `textures/${id}.png`);
@@ -172,7 +172,7 @@ const mod: StudioMod = {
     async function download(s: CorpusShader): Promise<{ bytes: ArrayBuffer; ext: string } | null> {
       const base = studio.state.corpus?.base ?? 'https://glslop.com';
       // The PNG original always exists and every webview decodes it (WebKitGTK can't do AVIF).
-      const r = await fetch(`${base}/posters/${encodeURIComponent(s.id)}.png`);
+      const r = await fetch(`${base}/posters/${encodeURIComponent(s.id)}.png`, { signal: AbortSignal.timeout(30_000) });
       if (!r.ok) return null;
       return { bytes: await r.arrayBuffer(), ext: 'png' };
     }

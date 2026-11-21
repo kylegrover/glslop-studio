@@ -326,12 +326,18 @@ async fn probe_stop(app: tauri::AppHandle) {
 
 /// Sent by the webview once its `bridge:call` listener is registered.
 #[tauri::command]
-fn bridge_ready(ready: tauri::State<'_, Arc<BridgeReady>>) {
-    ready.set(true);
+fn bridge_ready(webview: tauri::Webview, ready: tauri::State<'_, Arc<BridgeReady>>) {
+    if webview.label() == "main" {
+        ready.set(true);
+    }
 }
 
+/// Only the main window runs tools, so only it may answer a bridge call.
 #[tauri::command]
-fn bridge_reply(id: String, result: Value, pending: tauri::State<'_, Arc<Pending>>) {
+fn bridge_reply(webview: tauri::Webview, id: String, result: Value, pending: tauri::State<'_, Arc<Pending>>) {
+    if webview.label() != "main" {
+        return;
+    }
     if let Some(tx) = pending.0.lock().unwrap().remove(&id) {
         let _ = tx.send(result);
     }
@@ -408,7 +414,7 @@ fn start_bridge(app: tauri::AppHandle, pending: Arc<Pending>, ready: Arc<BridgeR
                 let id = uuid::Uuid::new_v4().simple().to_string();
                 let (tx, rx) = channel();
                 pending.0.lock().unwrap().insert(id.clone(), tx);
-                let _ = app.emit("bridge:call", json!({ "id": id, "tool": tool, "args": args }));
+                let _ = app.emit_to("main", "bridge:call", json!({ "id": id, "tool": tool, "args": args }));
                 match rx.recv_timeout(Duration::from_secs(600)) {
                     Ok(v) => {
                         let code = if v.get("error").is_some() { 400 } else { 200 };
@@ -451,7 +457,7 @@ fn base64_engine() -> &'static [u8; 64] {
 }
 
 fn b64_decode(s: &str) -> Option<Vec<u8>> {
-    let s = s.split(',').last()?.trim(); // tolerate data URLs
+    let s = s.split(',').next_back()?.trim(); // tolerate data URLs
     let mut map = [255u8; 256];
     for (i, c) in base64_engine().iter().enumerate() {
         map[*c as usize] = i as u8;
@@ -481,7 +487,24 @@ pub fn run() {
     let ready = Arc::new(BridgeReady::default());
     let ready_on_load = ready.clone();
 
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // One studio per user: a second launch focuses the first instead of fighting it for bridge.json
+    // and the bridge port. Runs with their own home (GLSLOP_STUDIO_HOME: tests, side-by-side copies)
+    // are separate on purpose. Must be the first plugin registered.
+    if std::env::var_os("GLSLOP_STUDIO_HOME").is_none() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // A run that was started hidden stays hidden.
+            if std::env::var_os("GLSLOP_STUDIO_HIDDEN").is_some() {
+                return;
+            }
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }));
+    }
+    let app = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
@@ -545,7 +568,9 @@ pub fn run() {
             let mut b = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title(format!("glslop studio · {backend}"))
                 .inner_size(1440.0, 920.0)
-                .min_inner_size(720.0, 480.0);
+                .min_inner_size(720.0, 480.0)
+                // GLSLOP_STUDIO_HIDDEN=1: no visible window (tests, agents driving it over the bridge).
+                .visible(std::env::var_os("GLSLOP_STUDIO_HIDDEN").is_none());
             // WebView2 refuses to share a user-data folder between different browser args, so give
             // every backend/cache combination its own profile. Harmless on other platforms.
             #[cfg(windows)]
@@ -595,4 +620,50 @@ fn percent_decode(s: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_decode_handles_utf8_and_bad_escapes() {
+        assert_eq!(percent_decode("mods/my%20mod/index.js"), "mods/my mod/index.js");
+        assert_eq!(percent_decode("caf%C3%A9"), "café");
+        assert_eq!(percent_decode("100%"), "100%");
+        assert_eq!(percent_decode("a%zzb"), "a%zzb");
+        assert_eq!(percent_decode("a%2"), "a%2");
+    }
+
+    #[test]
+    fn b64_decode_accepts_data_urls_and_rejects_junk() {
+        assert_eq!(b64_decode("aGVsbG8=").unwrap(), b"hello");
+        assert_eq!(b64_decode("data:image/png;base64,aGVsbG8=").unwrap(), b"hello");
+        assert_eq!(b64_decode("aGVs
+bG8=").unwrap(), b"hello");
+        assert!(b64_decode("not base64!").is_none());
+    }
+
+    #[test]
+    fn mime_for_serves_mods_as_modules_and_unknowns_as_bytes() {
+        assert_eq!(mime_for(Path::new("mods/a/index.js")), "text/javascript");
+        assert_eq!(mime_for(Path::new("x.mjs")), "text/javascript");
+        assert_eq!(mime_for(Path::new("thumb.webp")), "image/webp");
+        assert_eq!(mime_for(Path::new("shader.fs")), "text/plain");
+        assert_eq!(mime_for(Path::new("thing.exe")), "application/octet-stream");
+        assert_eq!(mime_for(Path::new("noext")), "application/octet-stream");
+    }
+
+    #[test]
+    fn browser_args_only_exist_on_windows_and_follow_the_settings() {
+        let s = BootSettings { disable_gpu_cache: Some(true), extra_browser_args: Some("--foo".into()), ..Default::default() };
+        let (args, no_cache) = browser_args("d3d11", &s);
+        if cfg!(windows) {
+            assert!(args.contains("--use-angle=d3d11") && args.contains("--disable-gpu-program-cache") && args.ends_with("--foo"));
+            assert!(no_cache);
+            assert!(!browser_args("default", &BootSettings::default()).0.contains("--use-angle"));
+        } else {
+            assert_eq!((args.as_str(), no_cache), ("", false));
+        }
+    }
 }

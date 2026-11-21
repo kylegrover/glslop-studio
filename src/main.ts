@@ -38,6 +38,21 @@ async function boot() {
   runtimeConfig.posterBase = studio.settings.glslopBase ?? 'https://glslop.com';
   runtimeConfig.captureTranslated = true; // gpu.compile {translated} and the advisor read it
 
+  // Errors nobody caught: show them instead of losing them in a console the user never opens.
+  // The same message is shown at most once per 10 s, so a failing render loop can't flood the screen.
+  const shown = new Map<string, number>();
+  const report = (what: string, e: unknown) => {
+    const msg = `${what}: ${String((e as Error)?.message ?? e).slice(0, 300)}`;
+    console.error(what, e);
+    if (performance.now() - (shown.get(msg) ?? -1e9) < 10_000) return;
+    shown.set(msg, performance.now());
+    (studio.state.errors ??= []).push({ at: new Date().toISOString(), msg });
+    if (studio.state.errors.length > 50) studio.state.errors.shift();
+    studio.toast(msg, 'error');
+  };
+  window.addEventListener('unhandledrejection', (e) => report('unhandled error', e.reason));
+  window.addEventListener('error', (e) => { if (e.error || e.message) report('error', e.error ?? e.message); });
+
   registerModTools(studio, CORE);
   await loadCoreMods(studio, CORE);
   await loadUserMods(studio);

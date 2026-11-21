@@ -10,9 +10,14 @@
 // The studio must be running; the bridge address + token are read from ~/.glslop-studio/bridge.json
 // (GLSLOP_STUDIO_HOME overrides) on every call, so restarting the studio needs no reconfiguration.
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+
+// This adapter's own version (the repo's package.json when run from a checkout).
+let VERSION = 'unknown';
+try { VERSION = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')).version; } catch { /* run from a copied file */ }
 
 const HOME = process.env.GLSLOP_STUDIO_HOME || join(homedir(), '.glslop-studio');
 const bridge = () => JSON.parse(readFileSync(join(HOME, 'bridge.json'), 'utf8'));
@@ -39,7 +44,7 @@ async function handle(msg) {
     return {
       protocolVersion: params?.protocolVersion ?? '2025-06-18',
       capabilities: { tools: { listChanged: true } },
-      serverInfo: { name: 'glslop-studio', version: '0.1.0' },
+      serverInfo: { name: 'glslop-studio', version: VERSION },
       instructions: 'Tools of a running glslop studio (desktop ISF shader workbench). Results are JSON; images are written to files and returned as paths — open them to look. viewer__* tools change what the human sees.',
     };
   }

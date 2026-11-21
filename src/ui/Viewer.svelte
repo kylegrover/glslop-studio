@@ -7,6 +7,7 @@
   import VideoExport from '@glslop/ui/VideoExport.svelte';
   import { exportAdapters } from './adapters';
   import { fmtMs, speedClass } from './format';
+  import { autosaveAction, shaderFileName } from './edits';
 
   let { studio, params }: { studio: Studio; params: Record<string, any> } = $props();
   const SCRATCH = `/*{
@@ -20,6 +21,12 @@ void main(){
 }
 `;
   const scratchPath = `${studio.host.paths.workspace}/scratch.fs`;
+  // Anything that isn't the scratch buffer is autosaved here while it differs from what was opened.
+  const autosavePath = (t: string) => `${studio.host.paths.workspace}/autosave/${shaderFileName(t)}`;
+  let recovered = $state<string | null>(null);
+  let autosaved = false;
+  function restoreAutosave() { if (recovered === null) return; initial = recovered; recovered = null; key++; }
+  function discardAutosave() { recovered = null; studio.host.remove(autosavePath(title)).catch(() => {}); }
   let initial = $state<string | null>(null);
   let title = $state<string>(params.title ?? 'scratch');
   let current = '';
@@ -54,6 +61,12 @@ void main(){
     else { initial = await studio.host.readText(scratchPath).catch(() => SCRATCH); title = 'scratch'; }
     forkOf = p.forkOf ?? p.id ?? null;
     pubTitle = title.replace(/ \(fork\)$/, '');
+    autosaved = false;
+    recovered = null;
+    if (title !== 'scratch' && initial !== null) {
+      const saved = await studio.host.readText(autosavePath(title)).catch(() => null);
+      if (autosaveAction(initial, saved) === 'offer') recovered = saved;
+    }
     key++;
   }
 
@@ -62,7 +75,11 @@ void main(){
     clearTimeout(adviceTimer);
     adviceTimer = setTimeout(async () => {
       advice = await studio.call('advise', { isf: src }, { caller: 'ui' }).catch(() => null);
-      if (title === 'scratch') studio.host.writeText(scratchPath, src).catch(() => {});
+      if (title === 'scratch') { studio.host.writeText(scratchPath, src).catch(() => {}); return; }
+      // Don't overwrite an autosave the human hasn't decided about yet.
+      if (recovered !== null || initial === null) return;
+      if (src !== initial) { autosaved = true; studio.host.writeText(autosavePath(title), src).catch(() => {}); }
+      else if (autosaved) { autosaved = false; studio.host.remove(autosavePath(title)).catch(() => {}); }
     }, 600);
   }
 
@@ -88,9 +105,14 @@ void main(){
     <button class="btn" onclick={openFile}>workspace files</button>
     <button class="btn" onclick={() => studio.host.open(`${studio.host.paths.workspace}/shaders`)}>open folder</button>
   </div>
+  {#if recovered !== null}
+    <div class="recover">edits to <b>{title}</b> from last time were autosaved.
+      <button class="btn" onclick={restoreAutosave}>restore them</button>
+      <button class="btn" onclick={discardAutosave}>discard</button></div>
+  {/if}
   {#if initial !== null}
     {#key key}
-      <ShaderStage {studio} isf={initial} filename={`${title.replace(/[^\w.-]+/g, '_').replace(/\.fs$/, '')}.fs`}
+      <ShaderStage {studio} isf={initial} filename={shaderFileName(title)}
         onCompiled={(ms: number) => (compileMs = ms)} onInputs={(v: Record<string, any>) => (liveInputs = v)} {onSource} />
     {/key}
   {/if}
@@ -133,6 +155,7 @@ void main(){
   .page { max-width: 1600px; margin: 0 auto; padding: 14px 24px 40px; }
   .headrow { display: flex; gap: 10px; align-items: baseline; margin-bottom: 12px; }
   .headrow h2 { margin: 0; }
+  .recover { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; padding: 8px 12px; border: 2px solid var(--line); background: var(--paper); font-size: 13px; }
   .grow { flex: 1; }
   .headrow .btn { font-size: 12px; padding: 2px 9px; border-width: 3px; }
   .advice { font-size: 12px; }

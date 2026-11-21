@@ -349,7 +349,7 @@ pub async fn glslop_publish(
     let base = origin(&base)?;
     let handle = status_for(&state, &base)?.handle.ok_or("not signed in")?;
     let title = payload["title"].as_str().map(str::trim).filter(|t| !t.is_empty()).ok_or("payload.title is required")?;
-    if payload["isf"].as_str().map_or(true, |s| s.trim().is_empty()) {
+    if payload["isf"].as_str().is_none_or(|s| s.trim().is_empty()) {
         return Err("payload.isf is required".into());
     }
     let _ = title;
@@ -364,6 +364,33 @@ pub async fn glslop_publish(
         return Ok(json!({ "published": false, "reason": "the signed-in account changed while confirming; nothing was sent" }));
     }
     let r = glslop_request(&state, &base, "POST", "/api/submit", Some(payload))?;
-    let ok = r["status"].as_u64().map_or(false, |s| s < 400);
+    let ok = r["status"].as_u64().is_some_and(|s| s < 400);
     Ok(json!({ "published": ok, "status": r["status"], "body": r["body"] }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn origin_accepts_https_and_local_http_only() {
+        assert_eq!(origin("https://glslop.com").unwrap(), "https://glslop.com");
+        assert_eq!(origin(" https://glslop.com/some/path?x=1 ").unwrap(), "https://glslop.com");
+        assert_eq!(origin("https://GLSLOP.com:8443/").unwrap(), "https://glslop.com:8443");
+        assert_eq!(origin("http://127.0.0.1:4399").unwrap(), "http://127.0.0.1:4399");
+        assert_eq!(origin("http://localhost:4399/x").unwrap(), "http://localhost:4399");
+        for bad in ["http://glslop.com", "http://evil.example", "ftp://glslop.com", "https://user:pw@glslop.com", "glslop.com", "", "file:///etc/passwd"] {
+            assert!(origin(bad).is_err(), "{bad} should be refused");
+        }
+    }
+
+    #[test]
+    fn clip_shortens_and_drops_control_characters() {
+        assert_eq!(clip("hello", 10), "hello");
+        assert_eq!(clip("hello world", 5), "hello…");
+        assert_eq!(clip("ab	c
+d", 10), "abc
+d");
+        assert_eq!(clip("ééééé", 3), "ééé…");
+    }
 }

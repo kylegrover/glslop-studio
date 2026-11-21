@@ -77,7 +77,7 @@ const mod: StudioMod = {
     };
 
     async function getJson(path: string) {
-      const r = await fetch(base() + path);
+      const r = await fetch(base() + path, { signal: AbortSignal.timeout(30_000) });
       if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
       return r.json();
     }

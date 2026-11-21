@@ -5,6 +5,7 @@
   import { onMount } from 'svelte';
   import type { Studio } from '../studio/api';
   import { GlslopRenderer, defaultFor } from '@glslop/core/runtime';
+  import { humanEdits } from './edits';
   import { parseISF } from '@glslop/core/parse';
   import type { ISFInput } from '@glslop/core/types';
   import IsfCodeArea from '@glslop/ui/IsfCodeArea.svelte';
@@ -55,6 +56,18 @@
   let weightSeq = 0, weightTimer: ReturnType<typeof setTimeout> | undefined;
   // "updated by agent": a flash on the code pane when the source arrives over the bridge
   let agentFlash = $state<string | null>(null), agentTimer: ReturnType<typeof setTimeout> | undefined;
+  // What the editor held before each outside update (newest last), so one can be undone.
+  let history = $state<{ source: string; from: string; at: number }[]>([]);
+  const HISTORY_MAX = 20;
+  let lastOutside: string | null = null; // what the last outside update set (see humanEdits)
+  async function undoUpdate() {
+    const prev = history[history.length - 1];
+    if (!prev) return false;
+    history = history.slice(0, -1);
+    source = prev.source; lastOutside = null; await apply(true);
+    agentFlash = null;
+    return true;
+  }
   let wrapEl: HTMLDivElement;
   let canvasEl: HTMLCanvasElement;
   let renderer: GlslopRenderer | null = null;
@@ -199,13 +212,20 @@
       get id() { return shaderId; }, get title() { return filename; }, get source() { return source; },
       get values() { return currentInputs(); }, get errors() { return compileErr ? [compileErr] : []; }, get compileMs() { return compileMs; },
       get renderer() { return renderer; }, canvas: canvasEl,
-      setSource: async (src: string, _title?: string, from = 'agent') => {
-        source = src; await apply(true);
+      setSource: async (src: string, _title?: string, from = 'agent', force = false) => {
+        // Don't silently replace what the human is in the middle of typing.
+        if (from !== 'you' && !force && humanEdits(source, applied, lastOutside)) {
+          throw new Error('the human has unapplied edits in the editor. Read them with viewer.getSource and merge, or pass force:true to replace them (viewer.undo brings them back).');
+        }
+        if (src !== source) history = [...history, { source, from, at: Date.now() }].slice(-HISTORY_MAX);
+        source = src; lastOutside = from === 'you' ? null : src; await apply(true);
         agentFlash = `updated by ${from} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
         clearTimeout(agentTimer); agentTimer = setTimeout(() => (agentFlash = null), 6000);
         return { ok: compileOk, errors: compileErr ? [compileErr] : [], compileMs };
       },
       get weight() { return { fps, desktop: wDesktop, browser: wBrowser, measuring: wBusy }; },
+      get dirty() { return humanEdits(source, applied, lastOutside); }, get undoDepth() { return history.length; },
+      undo: async () => ({ undone: await undoUpdate(), ok: compileOk, errors: compileErr ? [compileErr] : [], undoDepth: history.length }),
       setValue: (name: string, v: any) => {
         const inp = inputs.find((i) => i.NAME === name);
         if (!inp) return;
@@ -307,7 +327,7 @@
               <button class="jump-btn" onclick={() => codeArea?.scrollToChar(bodyStartIndex(source), true)}>↓ code</button>
             </span>
           {/if}
-          {#if agentFlash}<span class="agent-badge">{agentFlash}</span>{/if}
+          {#if agentFlash}<span class="agent-badge">{agentFlash}{#if history.length} · <button class="undo-btn" onclick={undoUpdate} title="put back what was here before this update">undo</button>{/if}</span>{/if}
           {#if dirty}<span class="dirty">edited</span>{/if}
           <span class={compileOk ? 'compile-ok' : 'compile-bad'}>{compileOk ? 'compiles ✓' : 'broken ✗'}</span>
           <button class="expand-btn" onclick={() => (codeExpanded = !codeExpanded)}>{codeExpanded ? '⛶ collapse' : '⛶ expand'}</button>
@@ -398,6 +418,7 @@
   .agent-badge { background: var(--slime); color: #000; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; white-space: nowrap; }
   .col-code.agent-flash { animation: agentflash 1.6s ease-out; }
   @keyframes agentflash { 0% { box-shadow: 0 0 0 4px var(--slime), 3px 3px 0 rgba(0,0,0,.25); } 100% { box-shadow: 0 0 0 0 transparent, 3px 3px 0 rgba(0,0,0,.25); } }
+  .undo-btn { all: unset; cursor: pointer; text-decoration: underline; }
   .dirty { background: var(--magenta); color: #fff; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; }
   .compile-strip { margin: 6px 8px 0; padding: 6px 8px; background: var(--warn); color: #fff; font-size: 11px; line-height: 1.35; max-height: 90px; overflow: auto; white-space: pre-wrap; border: 2px solid var(--line); }
   .code-actions { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px; }
