@@ -18,3 +18,22 @@ export function updateIntervalMs(settings: { updateCheckHours?: unknown }): numb
   const h = Number(settings.updateCheckHours);
   return (Number.isFinite(h) && h > 0 ? Math.min(168, Math.max(1, h)) : 6) * 3_600_000;
 }
+
+/**
+ * The daily usage count: the first update check of each UTC day adds one to glslop.com's
+ * (day, version, os) counter, and nothing else is sent. No install id: the app remembers only the
+ * last day it counted itself. Off when the `dailyCount` setting is false.
+ * Returns the headers to add to this check, and the day to remember if the check gets through.
+ */
+export function dailyCountHeaders(
+  settings: { dailyCount?: unknown },
+  lastDay: string | null | undefined,
+  version: string,
+  platform: string,
+  now = new Date(),
+): { headers: Record<string, string>; day: string | null } {
+  const day = now.toISOString().slice(0, 10);
+  const os = platform === 'windows' || platform === 'macos' || platform === 'linux' ? platform : null;
+  if (settings.dailyCount === false || lastDay === day || !os) return { headers: {}, day: null };
+  return { headers: { 'x-glslop-daily': '1', 'x-glslop-version': version, 'x-glslop-os': os }, day };
+}

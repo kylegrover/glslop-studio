@@ -49,7 +49,7 @@ const countMine = async () => {
 
 // --- the isolated app copy, pointed at the local server
 const HOME = mkdtempSync(join(tmpdir(), 'glslop-studio-publish-'));
-writeFileSync(join(HOME, 'settings.json'), JSON.stringify({ autoSync: false, autoUpdate: false, browserProbe: false, glslopBase: SERVER }));
+writeFileSync(join(HOME, 'settings.json'), JSON.stringify({ autoSync: false, autoUpdate: false, dailyCount: false, browserProbe: false, glslopBase: SERVER }));
 const app = spawn(exe, [], {
   env: { ...process.env, GLSLOP_STUDIO_HOME: HOME, GLSLOP_STUDIO_HIDDEN: '1', GLSLOP_STUDIO_NO_BROWSER: '1', GLSLOP_STUDIO_PUBLISH_DEBUG_PORT: String(DEBUG_PORT) },
   stdio: 'ignore',

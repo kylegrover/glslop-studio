@@ -16,7 +16,7 @@ const exe = resolve(process.argv[2] ?? `src-tauri/target/release/glslop-studio${
 if (!existsSync(exe)) { console.error(`no app binary at ${exe}; build it first (npx tauri build --no-bundle)`); process.exit(2); }
 
 const HOME = mkdtempSync(join(tmpdir(), 'glslop-studio-test-'));
-writeFileSync(join(HOME, 'settings.json'), JSON.stringify({ autoSync: false, autoUpdate: false, browserProbe: win }));
+writeFileSync(join(HOME, 'settings.json'), JSON.stringify({ autoSync: false, autoUpdate: false, dailyCount: false, browserProbe: win }));
 const app = spawn(exe, [], { env: { ...process.env, GLSLOP_STUDIO_HOME: HOME, GLSLOP_STUDIO_HIDDEN: '1' }, stdio: 'ignore' });
 const stop = () => {
   if (win) spawnSync('taskkill', ['/PID', String(app.pid), '/T', '/F'], { stdio: 'ignore' });

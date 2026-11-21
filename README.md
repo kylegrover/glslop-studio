@@ -99,3 +99,8 @@ The studio is built to be fast for you and nearly free for glslop.com:
   re-hovering resumes instantly. Across launches, Chromium's GPU program cache keeps linked
   binaries. Timing tools deliberately bypass it.
 - Lineage, forks, texture edges and technique galleries are all derived locally. Nothing is fetched.
+- **Update checks** go to `glslop.com/studio/latest.json` at launch and every 6 hours. The first one
+  each UTC day also sends this app's version and OS (`x-glslop-daily: 1`, `x-glslop-version`,
+  `x-glslop-os`), and glslop.com adds one to that day's count. That is the whole usage count: no
+  install id, no account, nothing about what you do in the app. Turn it off with Settings →
+  "send daily usage count" (`dailyCount: false`); updates keep working.

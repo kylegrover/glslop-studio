@@ -260,6 +260,28 @@ fn relaunch(app: tauri::AppHandle) {
     app.restart();
 }
 
+/// Bring the main window back on a second launch, on Linux. Two things get in the way there:
+/// tao's set_focus does nothing while the window is minimized, and GNOME's focus-stealing prevention
+/// only marks a window "demands attention" when a request carries no user timestamp (tao sends
+/// GDK_CURRENT_TIME). So deiconify it ourselves, then present it with the X server's current time,
+/// which window managers accept as "the user just asked for this". Runs on the GTK main thread.
+#[cfg(target_os = "linux")]
+fn linux_present(w: &tauri::WebviewWindow) {
+    use gtk::prelude::*;
+    let w2 = w.clone();
+    let _ = w.run_on_main_thread(move || {
+        let Ok(gw) = w2.gtk_window() else { return };
+        gw.deiconify();
+        gw.show();
+        let time = gw
+            .window()
+            .and_then(|win| win.downcast::<gdkx11::X11Window>().ok())
+            .map(|x| gdkx11::functions::x11_get_server_time(&x))
+            .unwrap_or(0); // 0 = GDK_CURRENT_TIME, for Wayland: the compositor decides
+        gw.present_with_time(time);
+    });
+}
+
 /// Quit (Ctrl+Q on Windows/Linux; macOS gets Cmd+Q from the system menu). Main window only, by
 /// capability. A normal exit, so bridge.json is cleaned up and an open publish window counts as cancel.
 #[tauri::command]
@@ -508,15 +530,8 @@ pub fn run() {
                 let _ = w.unminimize();
                 let _ = w.show();
                 let _ = w.set_focus();
-                // GNOME (and other X11/Wayland window managers) refuse focus requests from a window
-                // the user didn't just click, so set_focus only marks it "demands attention". Briefly
-                // raising it above other windows does bring it to the front there.
                 #[cfg(target_os = "linux")]
-                {
-                    let _ = w.set_always_on_top(true);
-                    let _ = w.set_always_on_top(false);
-                    let _ = w.set_focus();
-                }
+                linux_present(&w);
             }
         }));
     }

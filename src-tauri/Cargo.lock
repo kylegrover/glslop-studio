@@ -1556,7 +1556,9 @@ name = "glslop-studio"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "gdkx11",
  "getrandom 0.3.4",
+ "gtk",
  "keyring",
  "serde",
  "serde_json",

@@ -20,6 +20,7 @@
   // updates: the checkbox shows the channel in effect (a beta build follows betas unless told not to)
   let autoUpdate = $state(studio.settings.autoUpdate !== false);
   let betaUpdates = $state(updateChannel(studio.settings, studio.version) === 'beta');
+  let dailyCount = $state(studio.settings.dailyCount !== false);
   let updBusy = $state(false);
   let updMsg = $state<string | null>(null);
   async function checkNow(install = false) {
@@ -129,7 +130,9 @@
   <div class="row">
     <label><input type="checkbox" bind:checked={autoUpdate} onchange={() => setSetting('autoUpdate', autoUpdate)} /> check automatically</label>
     <label><input type="checkbox" bind:checked={betaUpdates} onchange={() => setSetting('betaUpdates', betaUpdates)} /> beta updates (early builds, may be rough)</label>
+    <label title="The first update check of each day tells glslop.com this version and OS, so it can count how many copies are in use. No install id, no account, nothing about what you do in the app."><input type="checkbox" bind:checked={dailyCount} onchange={() => setSetting('dailyCount', dailyCount)} /> send daily usage count</label>
   </div>
+  <p class="muted">Daily usage count: once a day the update check also sends this app's version and OS ("{studio.version}, {studio.host.boot.platform}"), and glslop.com adds one to that day's count. No id, no account, nothing about what you do here.</p>
 
   <h2>paths</h2>
   <table><tbody>

@@ -29,5 +29,11 @@ tauri-plugin-process = "2"
 tauri-plugin-single-instance = "2"
 ureq = { version = "3", features = ["json"] }
 
+# Linux only: raise the window on a second launch past GNOME focus-stealing prevention (lib.rs).
+# Both are already in the tree through tao; same versions.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+gdkx11 = "0.18"
+
 [profile.dev]
 incremental = true

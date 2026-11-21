@@ -8,7 +8,7 @@
 import type { Studio, StudioMod } from '../studio/api';
 import { renderPosterFrame } from '@glslop/core/runtime';
 import { loopBudget } from '@glslop/core/budget';
-import { updateChannel, updateIntervalMs } from './updates';
+import { dailyCountHeaders, updateChannel, updateIntervalMs } from './updates';
 
 const mod: StudioMod = {
   description: 'Sign in with glslop, publish shaders, check for app updates.',
@@ -136,7 +136,13 @@ const mod: StudioMod = {
         const { check } = await import('@tauri-apps/plugin-updater');
         const channel = updateChannel(studio.settings, studio.version);
         // The server offers stable builds unless asked; the header is how a copy asks for betas.
-        const u = await check({ headers: { 'x-glslop-channel': channel }, timeout: 30_000 });
+        // The day's first check also carries the daily usage count (version + os, nothing else).
+        const dayFile = `${studio.host.paths.config}/daily-count-day`;
+        const lastDay = await studio.host.readText(dayFile).then((s) => s.trim()).catch(() => null);
+        const daily = dailyCountHeaders(studio.settings, lastDay, studio.version, studio.host.boot.platform);
+        const u = await check({ headers: { 'x-glslop-channel': channel, ...daily.headers }, timeout: 30_000 });
+        // Only after the check got an answer, so a failed check retries the count later that day.
+        if (daily.day) await studio.host.writeText(dayFile, daily.day).catch(() => {});
         studio.state.updateCheckedAt = new Date().toISOString();
         if (!u) {
           studio.state.update = null;
