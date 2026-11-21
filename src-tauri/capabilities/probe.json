@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "probe",
+  "description": "The hidden D3D11 cost-probe window: it only listens for jobs and emits results. No app commands, no files, no plugins.",
+  "windows": [
+    "probe"
+  ],
+  "permissions": [
+    "core:event:default"
+  ]
+}

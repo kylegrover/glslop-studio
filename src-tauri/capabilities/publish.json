@@ -1,9 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "publish",
-  "description": "The publish confirmation window: nothing but the two app commands it calls (publish_view, publish_decide; both check the calling window in Rust). No plugins, events or window control.",
+  "description": "The publish confirmation window: only the two commands it calls (both also check the calling window in Rust). No files, plugins, events or window control.",
   "windows": [
     "publish-*"
   ],
-  "permissions": []
+  "permissions": [
+    "allow-publish-view",
+    "allow-publish-decide"
+  ]
 }

@@ -74,9 +74,23 @@ fn random(n: usize) -> String {
     b64(&buf)
 }
 
+/// The keychain service name. A run with its own home folder (GLSLOP_STUDIO_HOME: tests, side-by-side
+/// copies) gets its own name, so it can never read or use the real app's sign-in.
+fn keyring_service(home: Option<&str>) -> String {
+    use sha2::{Digest, Sha256};
+    match home.map(str::trim).filter(|h| !h.is_empty()) {
+        None => KEYRING_SERVICE.to_string(),
+        Some(h) => {
+            let hex: String = Sha256::digest(h.as_bytes()).iter().take(6).map(|b| format!("{b:02x}")).collect();
+            format!("{KEYRING_SERVICE}:{hex}")
+        }
+    }
+}
+
 fn entry(base: &str) -> Result<keyring::Entry, String> {
     // One credential per server, so a dev server and glslop.com don't overwrite each other.
-    keyring::Entry::new(KEYRING_SERVICE, base).map_err(|e| e.to_string())
+    let service = keyring_service(std::env::var("GLSLOP_STUDIO_HOME").ok().as_deref());
+    keyring::Entry::new(&service, base).map_err(|e| e.to_string())
 }
 
 fn post_form(url: &str, form: &[(&str, &str)]) -> Result<Value, String> {
@@ -382,6 +396,18 @@ mod tests {
         for bad in ["http://glslop.com", "http://evil.example", "ftp://glslop.com", "https://user:pw@glslop.com", "glslop.com", "", "file:///etc/passwd"] {
             assert!(origin(bad).is_err(), "{bad} should be refused");
         }
+    }
+
+    #[test]
+    fn a_custom_home_never_shares_the_real_keychain_entry() {
+        assert_eq!(keyring_service(None), "glslop-studio");
+        assert_eq!(keyring_service(Some("  ")), "glslop-studio");
+        let a = keyring_service(Some("C:/tmp/home_a"));
+        let b = keyring_service(Some("C:/tmp/home_b"));
+        assert!(a.starts_with("glslop-studio:") && a.len() == "glslop-studio:".len() + 12, "{a}");
+        assert_ne!(a, b);
+        assert_ne!(a, "glslop-studio");
+        assert_eq!(a, keyring_service(Some("C:/tmp/home_a")), "stable for the same folder");
     }
 
     #[test]

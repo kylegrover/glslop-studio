@@ -96,7 +96,7 @@ Environment variables for running a disposable copy of the app:
 
 | Variable | Effect |
 |---|---|
-| `GLSLOP_STUDIO_HOME` | Use this folder instead of `~/.glslop-studio` (settings, cache, mods, `bridge.json`). |
+| `GLSLOP_STUDIO_HOME` | Use this folder instead of `~/.glslop-studio` (settings, cache, mods, `bridge.json`). Such a copy also has its own sign-in: it never sees or uses the real app's glslop account. |
 | `GLSLOP_STUDIO_NO_BROWSER=1` | `account.signIn` doesn't open the default browser. Read the sign-in URL from `studio.state.authUrl` (or the `auth:url` event) and open it in your own browser. |
 | `GLSLOP_STUDIO_SIGNIN_WAIT_S` | How long sign-in waits for the browser (default 600). Short values test the "sign-in expired" page. |
 | `GLSLOP_STUDIO_HIDDEN=1` | No visible window. The app runs normally and answers the bridge: for tests and for agents that don't need a human watching. |
