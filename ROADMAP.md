@@ -29,7 +29,7 @@ Likely candidates, in the order we expect them:
    parent recorded. Deep links later.
 4. **Show what the agent changed** in the current edit, so the human can keep parts and take over.
 
-## 0.1.2 (beta: v0.1.2-beta.1, 2026-11-21; Mac + Linux testing next, then stable)
+## 0.1.2 (released 2026-11-22; Mac tested on beta.2; Linux not yet tested on the new Ubuntu install)
 
 - Motion: live-shader startup splash; the opened shader flies from its hover frame into the stage and
   carries on from the same moment; the grid deals in; softer compile blinks. Setting `motion`
@@ -40,7 +40,9 @@ Likely candidates, in the order we expect them:
   fresh WebGL context each time and the webview evicted the editor's).
 - Fixed: relaunch and in-app updates open behind other windows on Windows.
 - Second launch puts the cursor in browse's search box.
-- Opt-in custom title bar (`titleBar: custom`), a prototype; Mac and Linux untested.
+- Opt-in custom title bar (`titleBar: custom`), experimental; untested on Linux.
+- The compile bench moved out of the header into Settings → shader weight (Ctrl+4 still opens it).
+- Fixed: the ← back button was missing (since 0.1.0). macOS: reopening from the Dock focuses search.
 
 ## Small fixes, not yet done
 
