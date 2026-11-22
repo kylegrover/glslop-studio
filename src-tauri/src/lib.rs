@@ -257,7 +257,19 @@ fn boot_info(state: tauri::State<'_, Arc<Mutex<BootInfo>>>) -> BootInfo {
 /// Restart the app with a different ANGLE backend (persisted to settings.json first by the frontend).
 #[tauri::command]
 fn relaunch(app: tauri::AppHandle) {
+    allow_foreground();
     app.restart();
+}
+
+/// Windows only lets the foreground app hand the foreground to another process. Without this, a
+/// relaunched or updated studio starts behind whatever was in front (the user's click was on the old
+/// process). Called just before we exit into the new one.
+fn allow_foreground() {
+    #[cfg(windows)]
+    // SAFETY: plain Win32 call with a constant argument; no pointers.
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(windows_sys::Win32::UI::WindowsAndMessaging::ASFW_ANY);
+    }
 }
 
 /// Bring the main window back on a second launch, on Linux. Two things get in the way there:
@@ -612,7 +624,11 @@ pub fn run() {
                 let tag = format!("{backend}{}", if no_cache { "-nocache" } else { "" });
                 b.additional_browser_args(&args).data_directory(config_dir().join("webview").join(tag))
             };
-            b.build()?;
+            let w = b.build()?;
+            // Come up in front, also after a relaunch/update (see allow_foreground).
+            if std::env::var_os("GLSLOP_STUDIO_HIDDEN").is_none() {
+                let _ = w.set_focus();
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -625,6 +641,9 @@ pub fn run() {
         // Don't leave a bridge.json pointing at a dead port. Only remove our own: a second instance
         // may have taken over the file.
         if let RunEvent::Exit = event {
+            // Whatever starts next (a relaunch, the updater's installer and the app it opens) may
+            // take the foreground.
+            allow_foreground();
             let f = config_dir().join("bridge.json");
             let ours = fs::read_to_string(&f)
                 .ok()

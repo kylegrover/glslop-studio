@@ -20,8 +20,11 @@
     onInputs?: (v: Record<string, any>) => void;
     /** Expose the source being edited (scratch editor saves it). */
     onSource?: (src: string) => void;
+    /** Editing from the start (the editor view). Otherwise casual viewing: fps only, and the cost
+     *  gauges (which compile the shader twice more in the background) wait until the first edit. */
+    editor?: boolean;
   }
-  let { studio, isf, shaderId = null, filename = 'shader.fs', onCompiled, onInputs, onSource }: Props = $props();
+  let { studio, isf, shaderId = null, filename = 'shader.fs', onCompiled, onInputs, onSource, editor = false }: Props = $props();
 
   const HEADER_RE = /\/\*\s*(\{[\s\S]*?\})\s*\*\//;
   function bodyStartIndex(src: string): number {
@@ -37,6 +40,9 @@
   let applied = $state(isf);
   let inputs = $state<ISFInput[]>(parseInputs(isf));
   const dirty = $derived(source !== applied);
+  // svelte-ignore state_referenced_locally
+  let editing = $state(editor);
+  $effect(() => { if (dirty && !editing) { editing = true; if (compileOk) scheduleWeight(applied, 0); } });
   let compileErr = $state<string | null>(null);
   let compileOk = $state(true);
   // A short visual beat on each compile after the first: a slime ring when it works, a shake when not.
@@ -135,6 +141,7 @@
 
   async function compile(src: string): Promise<boolean> {
     if (!renderer) return false;
+    if (renderer.isContextLost()) { compileErr = 'the GPU dropped this view (driver reset); it comes back by itself in a moment'; return false; }
     compiling = true;
     await new Promise((r) => setTimeout(r, 0)); // paint "compiling…" first: Vulkan compiles synchronously
     const t0 = performance.now();
@@ -146,7 +153,7 @@
     studio.events.emit('viewer:compiled', { id: shaderId, ok: res.compileOk, compileMs, errors: res.errors, backend: studio.host.boot.angleBackend });
     if (!res.compileOk) { compileErr = res.errors.join('\n') || 'compile failed'; compileOk = false; beat('bad'); return false; }
     compileErr = null; compileOk = true; beat('ok');
-    scheduleWeight(src);
+    if (editing) scheduleWeight(src);
     return true;
   }
   function scheduleWeight(src: string, delay = 700) {
@@ -216,6 +223,16 @@
     document.addEventListener('fullscreenchange', onFs);
     const onVis = () => { if (document.hidden && !paused) togglePlay(); };
     document.addEventListener('visibilitychange', onVis);
+    // If the GPU process drops this context (driver reset, too many contexts), let it come back and
+    // rebuild, instead of reporting the next apply as a broken shader.
+    const onLost = (e: Event) => { e.preventDefault(); };
+    const onRestored = () => {
+      try { renderer?.dispose(); } catch { /* already gone */ }
+      renderer = new GlslopRenderer(canvasEl); resize();
+      compile(applied).then((ok) => { if (ok) pushAll(); });
+    };
+    canvasEl.addEventListener('webglcontextlost', onLost);
+    canvasEl.addEventListener('webglcontextrestored', onRestored);
     const offExport = [
       studio.events.on('export:start', () => { if (!paused) togglePlay(); }),
     ];
@@ -230,6 +247,7 @@
           throw new Error('the human has unapplied edits in the editor. Read them with viewer.getSource and merge, or pass force:true to replace them (viewer.undo brings them back).');
         }
         if (src !== source) history = [...history, { source, from, at: Date.now() }].slice(-HISTORY_MAX);
+        editing = true;
         source = src; lastOutside = from === 'you' ? null : src; await apply(true);
         agentFlash = `updated by ${from} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
         clearTimeout(agentTimer); agentTimer = setTimeout(() => (agentFlash = null), 6000);
@@ -257,6 +275,7 @@
       if (studio.state.viewer === handle) studio.state.viewer = null;
       cancelAnimationFrame(raf); ro.disconnect();
       document.removeEventListener('fullscreenchange', onFs); document.removeEventListener('visibilitychange', onVis);
+      canvasEl.removeEventListener('webglcontextlost', onLost); canvasEl.removeEventListener('webglcontextrestored', onRestored);
       offExport.forEach((o) => o());
       renderer?.dispose(); renderer = null;
     };
@@ -309,7 +328,7 @@
         {#if !panelOpen && !keepOpen}<div class="fs-hotzone" onmouseenter={() => (panelOpen = true)} role="presentation"></div>{/if}
       {/if}
     </div>
-    <WeightBar {studio} {fps} desktop={wDesktop} browser={wBrowser} busy={wBusy} />
+    <WeightBar {studio} {fps} desktop={wDesktop} browser={wBrowser} busy={wBusy} full={editing} />
   </section>
 
   <section class="col col-params" class:rail={codeExpanded}>
@@ -435,10 +454,10 @@
   .agent-badge { background: var(--slime); color: #000; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; white-space: nowrap; }
   .col-code.agent-flash { animation: agentflash 1.6s ease-out; }
   :global(html:not([data-motion='off'])) .stage.pop-ok { animation: pop-ok .6s ease-out; }
-  :global(html[data-motion='full']) .stage.pop-bad { animation: pop-bad .45s cubic-bezier(.36,.07,.19,.97); }
+  :global(html[data-motion='full']) .stage.pop-bad { animation: pop-bad .3s ease-out; }
   :global(html[data-motion='calm']) .stage.pop-bad { box-shadow: 0 0 0 3px var(--warn); }
-  @keyframes pop-ok { 0% { box-shadow: 0 0 0 0 var(--slime); } 25% { box-shadow: 0 0 0 6px var(--slime); } 100% { box-shadow: 0 0 0 14px transparent; } }
-  @keyframes pop-bad { 10%, 90% { translate: -1px 0; } 20%, 80% { translate: 3px 0; } 30%, 50%, 70% { translate: -6px 0; } 40%, 60% { translate: 6px 0; } 0%, 100% { box-shadow: 0 0 0 3px var(--warn); } }
+  @keyframes pop-ok { 0% { box-shadow: 0 0 0 0 rgba(70, 255, 26, .7); } 30% { box-shadow: 0 0 0 3px rgba(70, 255, 26, .55); } 100% { box-shadow: 0 0 0 7px rgba(70, 255, 26, 0); } }
+  @keyframes pop-bad { 20%, 60% { translate: -2px 0; } 40%, 80% { translate: 2px 0; } 0% { box-shadow: 0 0 0 2px rgba(255, 59, 31, .8); } 100% { box-shadow: 0 0 0 2px rgba(255, 59, 31, 0); } }
   :global(html:not([data-motion='off'])) .compile-strip { animation: strip-in .25s ease-out; }
   @keyframes strip-in { from { opacity: 0; translate: 0 -6px; } }
   @keyframes agentflash { 0% { box-shadow: 0 0 0 4px var(--slime), 3px 3px 0 rgba(0,0,0,.25); } 100% { box-shadow: 0 0 0 0 transparent, 3px 3px 0 rgba(0,0,0,.25); } }

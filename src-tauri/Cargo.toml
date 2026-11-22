@@ -31,6 +31,9 @@ ureq = { version = "3", features = ["json"] }
 
 # Linux only: raise the window on a second launch past GNOME focus-stealing prevention (lib.rs).
 # Both are already in the tree through tao; same versions.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 gdkx11 = "0.18"

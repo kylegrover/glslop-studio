@@ -6,7 +6,7 @@
   import { fmtMs } from './format';
 
   interface Cost { ms: number | null; ok: boolean; kind: string; backend: string; note?: string }
-  let { studio, fps, desktop, browser, busy }: { studio: Studio; fps: number; desktop: Cost | null; browser: Cost | null; busy: { desktop: boolean; browser: boolean } } = $props();
+  let { studio, fps, desktop, browser, busy, full = true }: { studio: Studio; fps: number; desktop: Cost | null; browser: Cost | null; busy: { desktop: boolean; browser: boolean }; full?: boolean } = $props();
 
   const AUTOPLAY = 500;
   const pos = (ms: number) => Math.max(0, Math.min(1, (Math.log10(Math.max(ms, 10)) - 1) / (Math.log10(30_000) - 1)));
@@ -18,12 +18,13 @@
     : `${browser?.note ?? 'estimate'}. glslop.com autoplays under ${AUTOPLAY} ms.`);
 </script>
 
-<div class="weight">
+<div class="weight" class:only-fps={!full}>
   <div class="g" title="frames per second at this size, right now">
     <span class="k">fps</span>
     <div class="track"><div class="fill {fpsClass(fps)}" style="width:{Math.min(100, (fps / 60) * 100)}%"></div></div>
     <span class="v {fpsClass(fps)}">{fps || '—'}</span>
   </div>
+  {#if full}
   <div class="g" title="cold compile through the first frame in the studio ({studio.host.boot.angleBackend})">
     <span class="k">desktop</span>
     <div class="track"><div class="fill {msClass(desktop?.ms)}" class:pulse={busy.desktop} style="width:{desktop?.ms != null ? pos(desktop.ms) * 100 : 0}%"></div></div>
@@ -37,9 +38,11 @@
     </div>
     <span class="v {msClass(browser?.ms)}">{busy.browser && browser ? '… ' : ''}{label(browser, busy.browser)}{browser && browser.kind !== 'measured' && browser.kind !== 'error' ? ' est' : ''}</span>
   </div>
+  {/if}
 </div>
 
 <style>
+  .weight.only-fps { grid-template-columns: minmax(0, 1fr); max-width: 260px; }
   .weight { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 12px; margin-top: 8px; padding: 5px 8px; background: var(--paper); border: 2px solid var(--line); box-shadow: 3px 3px 0 rgba(0,0,0,.25); font-size: 11px; }
   .g { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 6px; min-width: 0; cursor: help; }
   .k { text-transform: uppercase; letter-spacing: 1px; font-size: 10px; opacity: .75; }

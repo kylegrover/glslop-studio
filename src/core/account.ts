@@ -158,8 +158,8 @@ const mod: StudioMod = {
           if (e.event === 'Started') total = e.data.contentLength ?? 0;
           if (e.event === 'Progress') { got += e.data.chunkLength; ctx.progress(`downloading update ${total ? Math.round((got / total) * 100) + '%' : ''}`, total ? got / total : undefined); }
         });
-        const { relaunch } = await import('@tauri-apps/plugin-process');
-        await relaunch();
+        // Our own relaunch: it lets the new process come to the front (Windows foreground rules).
+        await studio.host.relaunch();
         return info;
       },
     });

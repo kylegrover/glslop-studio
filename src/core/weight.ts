@@ -98,22 +98,35 @@ const mod: StudioMod = {
       return run;
     }
 
-    /** Cold compile + first frame on the studio's own backend, in a throwaway context. */
+    /**
+     * Cold compile + first frame on the studio's own backend. One small context, reused: coldCopy
+     * already defeats every compile cache, so a fresh context per measurement bought nothing. And it
+     * cost a lot: a webview keeps ~16 WebGL contexts and frees discarded ones only on garbage
+     * collection, so after ~16 edits it evicted the OLDEST live context, which was the editor's own
+     * (the next apply then failed with "vertex: unknown compile error").
+     */
+    let measureR: any = null;
+    let measureQ: Promise<unknown> = Promise.resolve();
     async function desktop(isf: string): Promise<CostMeasure> {
       const backend = host.boot.angleBackend;
       const GlslopRenderer = studio.state.gl?.GlslopRenderer;
       if (!GlslopRenderer) return { ms: null, ok: false, kind: 'error', backend, note: 'gl mod not loaded' };
-      const canvas = document.createElement('canvas');
-      canvas.width = 64; canvas.height = 64;
-      const r = new GlslopRenderer(canvas);
-      try {
+      const run = measureQ.then(async (): Promise<CostMeasure> => {
+        if (!measureR || measureR.isContextLost()) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 64; canvas.height = 64;
+          measureR = new GlslopRenderer(canvas);
+        }
+        const r = measureR;
         const t0 = performance.now();
         const res = await r.load(coldCopy(isf));
         if (!res.compileOk) return { ms: Math.round(performance.now() - t0), ok: false, kind: 'error', backend, errors: res.errors };
         r.draw(1.0);
         r.finish();
         return { ms: Math.round(performance.now() - t0), ok: true, kind: 'measured', backend };
-      } finally { r.dispose(); }
+      });
+      measureQ = run.catch(() => undefined);
+      return run;
     }
 
     studio.state.weight = { probe, desktop, estimateBrowserMs, AUTOPLAY_MS, enabled, stopProbe };
