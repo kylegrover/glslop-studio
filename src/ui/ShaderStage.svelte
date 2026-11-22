@@ -10,6 +10,7 @@
   import type { ISFInput } from '@glslop/core/types';
   import IsfCodeArea from '@glslop/ui/IsfCodeArea.svelte';
   import WeightBar from './WeightBar.svelte';
+  import { afterTransition } from './motion';
 
   interface Props {
     studio: Studio;
@@ -207,7 +208,8 @@
   onMount(() => {
     renderer = new GlslopRenderer(canvasEl);
     resize();
-    compile(applied).then((ok) => { if (ok) seedValues(false); });
+    // Let the open animation land first: on D3D11 a heavy compile can freeze the page for seconds.
+    afterTransition().then(() => compile(applied)).then((ok) => { if (ok) seedValues(false); });
     let fpsN = 0, fpsT = performance.now();
     const loop = () => {
       raf = requestAnimationFrame(loop);
@@ -414,7 +416,9 @@
   .studio { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.9fr) minmax(0, 1.6fr); gap: 14px; align-items: stretch; }
   .studio.expanded { grid-template-columns: minmax(0, 1.8fr) 38px minmax(0, 2.5fr); }
   .col { min-width: 0; }
-  .stage { position: relative; aspect-ratio: 1 / 1; width: 100%; max-height: min(78vh, 760px); background: #000; overflow: hidden; border: 2px solid var(--line); box-shadow: 6px 6px 0 var(--line); }
+  .stage { position: relative; aspect-ratio: 1 / 1; width: 100%; max-height: min(78vh, 760px); background: #000; overflow: hidden; border: 2px solid var(--line); box-shadow: var(--stage-shadow); --stage-shadow: 6px 6px 0 var(--line);
+    /* Its shadow is 6px where the panels' is 3px: sit 3px up-left so the shadow edges line up. */
+    top: -3px; left: -3px; }
   .stage canvas { width: 100%; height: 100%; display: block; object-fit: cover; touch-action: none; }
   .stage canvas.draggable { cursor: crosshair; }
   .badge-live { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.7); color: var(--slime); font-size: 11px; padding: 2px 6px; }
@@ -425,7 +429,7 @@
   .ctl { font-family: var(--mono); font-size: 14px; line-height: 1; padding: 4px 9px; cursor: pointer; color: #fff; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.4); }
   .ctl:hover { background: var(--magenta); border-color: var(--magenta); }
   .fs-keep { display: inline-flex; align-items: center; gap: 5px; color: #eee; font-size: 12px; }
-  .stage:fullscreen { width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; border: 0; box-shadow: none; }
+  .stage:fullscreen { width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; border: 0; box-shadow: none; top: 0; left: 0; animation: none !important; }
   .fs-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 8px 14px 12px; max-height: 44vh; overflow: auto; color: #eee; background: rgba(10,10,14,.62); backdrop-filter: blur(8px); border-top: 1px solid rgba(255,255,255,.18); transition: transform .22s ease, opacity .22s ease; }
   .fs-panel.fs-hidden { transform: translateY(100%); opacity: 0; pointer-events: none; }
   .fs-sliders { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2px 18px; }
@@ -457,9 +461,10 @@
   .col-code.agent-flash { animation: agentflash 1.6s ease-out; }
   :global(html:not([data-motion='off'])) .stage.pop-ok { animation: pop-ok .6s ease-out; }
   :global(html[data-motion='full']) .stage.pop-bad { animation: pop-bad .3s ease-out; }
-  :global(html[data-motion='calm']) .stage.pop-bad { box-shadow: 0 0 0 3px var(--warn); }
-  @keyframes pop-ok { 0% { box-shadow: 0 0 0 0 rgba(70, 255, 26, .7); } 30% { box-shadow: 0 0 0 3px rgba(70, 255, 26, .55); } 100% { box-shadow: 0 0 0 7px rgba(70, 255, 26, 0); } }
-  @keyframes pop-bad { 20%, 60% { translate: -2px 0; } 40%, 80% { translate: 2px 0; } 0% { box-shadow: 0 0 0 2px rgba(255, 59, 31, .8); } 100% { box-shadow: 0 0 0 2px rgba(255, 59, 31, 0); } }
+  :global(html[data-motion='calm']) .stage.pop-bad { box-shadow: 0 0 0 2px var(--warn), var(--stage-shadow); }
+  /* Each frame keeps the stage's own hard shadow underneath the ring. */
+  @keyframes pop-ok { 0% { box-shadow: 0 0 0 0 rgba(70, 255, 26, .7), var(--stage-shadow); } 30% { box-shadow: 0 0 0 3px rgba(70, 255, 26, .55), var(--stage-shadow); } 100% { box-shadow: 0 0 0 7px rgba(70, 255, 26, 0), var(--stage-shadow); } }
+  @keyframes pop-bad { 20%, 60% { translate: -2px 0; } 40%, 80% { translate: 2px 0; } 0% { box-shadow: 0 0 0 2px rgba(255, 59, 31, .8), var(--stage-shadow); } 100% { box-shadow: 0 0 0 2px rgba(255, 59, 31, 0), var(--stage-shadow); } }
   :global(html:not([data-motion='off'])) .compile-strip { animation: strip-in .25s ease-out; }
   @keyframes strip-in { from { opacity: 0; translate: 0 -6px; } }
   @keyframes agentflash { 0% { box-shadow: 0 0 0 4px var(--slime), 3px 3px 0 rgba(0,0,0,.25); } 100% { box-shadow: 0 0 0 0 transparent, 3px 3px 0 rgba(0,0,0,.25); } }

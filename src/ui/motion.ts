@@ -27,6 +27,13 @@ export function currentMotion(): Motion {
 
 const HERO = 'glslop-hero';
 
+// Resolves when the running view transition (if any) has finished. Heavy work (a shader compile can
+// stall the page for seconds) waits for it so the morph isn't frozen mid-flight.
+let settled: Promise<void> = Promise.resolve();
+export function afterTransition(maxMs = 700): Promise<void> {
+  return Promise.race([settled, new Promise<void>((r) => setTimeout(r, maxMs))]);
+}
+
 /**
  * Swap views inside a View Transition when the webview has them and motion is full; otherwise just
  * swap. `swap` replaces the DOM; `ready` resolves once the new view has drawn something worth
@@ -65,6 +72,7 @@ export function transitionViews(opts: {
   });
   // A skipped or timed-out transition (a slow GPU stalling the update) still swaps the view; it just
   // doesn't animate. Swallow those rejections so they never surface as "unhandled error" toasts.
+  settled = vt.finished.then(() => undefined, () => undefined);
   vt.ready?.catch(() => {});
   vt.updateCallbackDone?.catch((e: unknown) => console.warn('view transition skipped:', e));
   vt.finished.catch(() => {}).finally(() => {
