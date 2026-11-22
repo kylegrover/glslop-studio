@@ -328,7 +328,9 @@
         {#if !panelOpen && !keepOpen}<div class="fs-hotzone" onmouseenter={() => (panelOpen = true)} role="presentation"></div>{/if}
       {/if}
     </div>
-    <WeightBar {studio} {fps} desktop={wDesktop} browser={wBrowser} busy={wBusy} full={editing} />
+    <!-- Viewing: nothing here; the canvas's hover overlay already shows fps and compile time. The
+         gauges (fps + compile cost) appear once you start editing. -->
+    {#if editing}<WeightBar {studio} {fps} desktop={wDesktop} browser={wBrowser} busy={wBusy} />{/if}
   </section>
 
   <section class="col col-params" class:rail={codeExpanded}>
