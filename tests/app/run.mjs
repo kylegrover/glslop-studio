@@ -71,6 +71,8 @@ try {
   await sleep(300);
   st = (await call('viewer.state')).result;
   check('a closed editor no longer answers viewer calls', st.open === false && (await source()) === null, JSON.stringify(st));
+  const backBtn = await ev(`return !!document.querySelector('nav.main button[title^="back"]')`);
+  check('after moving between views, the header shows the ← back button', backBtn === true);
 
   // ------------------------------------------------------------------------------------------------
   await call('viewer.open', { isf: V1, title: 'guardtest' });

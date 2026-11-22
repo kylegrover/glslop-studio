@@ -653,6 +653,20 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building glslop studio");
     app.run(|_app, event| {
+        // macOS: opening the app again from the Dock or Finder doesn't start a second process (so the
+        // single-instance hook above never runs); the system sends Reopen instead. Same treatment.
+        #[cfg(target_os = "macos")]
+        if let RunEvent::Reopen { .. } = event {
+            if std::env::var_os("GLSLOP_STUDIO_HIDDEN").is_none() {
+                if let Some(w) = _app.get_webview_window("main") {
+                    let _ = w.unminimize();
+                    let _ = w.show();
+                    let _ = w.set_focus();
+                    let _ = w.emit("app:reopened", ());
+                }
+            }
+            return;
+        }
         // Don't leave a bridge.json pointing at a dead port. Only remove our own: a second instance
         // may have taken over the file.
         if let RunEvent::Exit = event {

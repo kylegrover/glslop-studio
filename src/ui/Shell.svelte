@@ -16,6 +16,8 @@
   let toasts = $state<{ id: number; msg: string; kind: string }[]>([]);
   let progress = $state<string>('');
   let history: { id: string; params: Record<string, unknown> }[] = [];
+  // history is a plain array (its params go to views untouched); this is what the ← button watches.
+  let canBack = $state(false);
   let account = $state<{ signedIn: boolean; handle: string | null }>(studio.state.account ?? { signedIn: false, handle: null });
   let update = $state<any>(studio.state.update ?? null);
   let signingIn = $state(false);
@@ -39,6 +41,7 @@
     if (!v || !slot) return;
     if (push && (active !== id || JSON.stringify(params) !== JSON.stringify(p))) history.push({ id: active, params });
     if (history.length > 50) history.shift();
+    canBack = history.length > 0;
     // The shader being opened (or the one we're coming back from) morphs between its grid thumbnail
     // and the stage. Only when motion is full and the webview has View Transitions.
     const heroKey = (p.id as string | undefined) ?? (params.id as string | undefined) ?? null;
@@ -57,7 +60,7 @@
     studio.state.activeParams = p;
     studio.events.emit('view:mounted', { id, params: p });
   }
-  function back() { const h = history.pop(); if (h) mount(h.id, h.params, false); }
+  function back() { const h = history.pop(); canBack = history.length > 0; if (h) mount(h.id, h.params, false); }
 
   onMount(() => {
     refresh();
@@ -107,7 +110,7 @@
         <div class="tagline">[ CC0 shader vibe commons · on your own gpu ]</div>
       </div>
       <nav class="main">
-        {#if history.length}<button onclick={back} title="back (Alt+←)">←</button>{/if}
+        {#if canBack}<button onclick={back} title="back (Alt+←)">←</button>{/if}
         {#each views as v (v.id)}
           <button class:on={active === v.id} onclick={() => mount(v.id)}>{v.title}</button>
         {/each}
