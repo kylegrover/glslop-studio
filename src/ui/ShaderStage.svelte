@@ -53,6 +53,11 @@
     pop = null; clearTimeout(popTimer);
     requestAnimationFrame(() => { pop = kind; popTimer = setTimeout(() => (pop = null), 650); });
   }
+  // The shader's cached thumbnail, shown until the first live frame: the open animation then flies
+  // thumbnail to thumbnail (not into a black box), and the live shader fades in over it.
+  // svelte-ignore state_referenced_locally
+  const poster: string | null = shaderId ? studio.state.thumbs?.cached(shaderId) ?? null : null;
+  let firstFrame = $state(false);
   let compiling = $state(false);
   let compileMs = $state<number | null>(null);
   let paused = $state(false);
@@ -215,6 +220,7 @@
       raf = requestAnimationFrame(loop);
       if (!renderer || paused || !compileOk && applied === source && compileErr) return;
       renderer.draw((performance.now() - began) / 1000);
+      if (!firstFrame && compileOk && applied === source) firstFrame = true;
       fpsN++;
       const now = performance.now();
       if (now - fpsT > 500) { fps = Math.round((fpsN * 1000) / (now - fpsT)); fpsN = 0; fpsT = now; }
@@ -312,6 +318,7 @@
   <section class="col col-canvas">
     <div class="stage" class:fs={isFs} class:pop-ok={pop === 'ok'} class:pop-bad={pop === 'bad'} bind:this={wrapEl} data-hero={shaderId}>
       <canvas bind:this={canvasEl} class:draggable={!!pointInput()} onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp} onpointercancel={pointerUp}></canvas>
+      {#if poster}<img class="poster" class:gone={firstFrame} src={poster} alt="" draggable="false" />{/if}
       {#if compiling}<div class="badge-live">compiling…</div>{/if}
       <div class="overlay" class:show={isFs} role="group" onmouseenter={() => (panelOpen = true)} onmouseleave={() => { if (!keepOpen) panelOpen = false; }}>
         <div class="ctl-left">
@@ -421,6 +428,8 @@
     top: -3px; left: -3px; }
   .stage canvas { width: 100%; height: 100%; display: block; object-fit: cover; touch-action: none; }
   .stage canvas.draggable { cursor: crosshair; }
+  .poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; z-index: 1; transition: opacity .25s ease-out; }
+  .poster.gone { opacity: 0; }
   .badge-live { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.7); color: var(--slime); font-size: 11px; padding: 2px 6px; }
   .overlay { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; background: linear-gradient(to top, rgba(0,0,0,.6), rgba(0,0,0,0)); opacity: 0; transform: translateY(8px); transition: opacity .18s ease, transform .18s ease; pointer-events: none; }
   .stage:hover .overlay, .overlay.show, .overlay:focus-within { opacity: 1; transform: none; pointer-events: auto; }

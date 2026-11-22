@@ -68,7 +68,12 @@ export function transitionViews(opts: {
     while (!(el = opts.root.querySelector<HTMLElement>(`[data-hero="${key}"]`)) && performance.now() - t0 < 220) {
       await new Promise((r) => setTimeout(r, 16));
     }
-    if (el) el.style.viewTransitionName = HERO;
+    if (el) {
+      // A hero image must be decoded before the snapshot, or the flight lands on an empty frame.
+      const img = el.querySelector('img');
+      if (img && !img.complete) await Promise.race([img.decode().catch(() => {}), new Promise((r) => setTimeout(r, 150))]);
+      el.style.viewTransitionName = HERO;
+    }
   });
   // A skipped or timed-out transition (a slow GPU stalling the update) still swaps the view; it just
   // doesn't animate. Swallow those rejections so they never surface as "unhandled error" toasts.
