@@ -53,10 +53,13 @@
     pop = null; clearTimeout(popTimer);
     requestAnimationFrame(() => { pop = kind; popTimer = setTimeout(() => (pop = null), 650); });
   }
-  // The shader's cached thumbnail, shown until the first live frame: the open animation then flies
-  // thumbnail to thumbnail (not into a black box), and the live shader fades in over it.
+  // Shown until the first live frame, so the open animation never flies into a black box: the
+  // hover's last frame when you opened it from a playing card (and the stage carries on from the
+  // same moment), otherwise the cached thumbnail. Then the live shader fades in over it.
   // svelte-ignore state_referenced_locally
-  const poster: string | null = shaderId ? studio.state.thumbs?.cached(shaderId) ?? null : null;
+  const handoff = shaderId && studio.state.handoff?.id === shaderId && performance.now() - studio.state.handoff.at < 3000 ? studio.state.handoff : null;
+  // svelte-ignore state_referenced_locally
+  const poster: string | null = handoff?.url ?? (shaderId ? studio.state.thumbs?.cached(shaderId) ?? null : null);
   let firstFrame = $state(false);
   let compiling = $state(false);
   let compileMs = $state<number | null>(null);
@@ -95,7 +98,8 @@
   let wrapEl: HTMLDivElement;
   let canvasEl: HTMLCanvasElement;
   let renderer: GlslopRenderer | null = null;
-  let raf = 0, began = performance.now(), pausedAt = 0;
+  // svelte-ignore state_referenced_locally
+  let raf = 0, began = performance.now() - (handoff ? (handoff.elapsed * 1000 + (performance.now() - handoff.at)) : 0), pausedAt = 0;
   let codeArea: { scrollToChar: (i: number, focus?: boolean) => void } | undefined;
 
   const clamp01 = (n: number) => Math.min(1, Math.max(0, n));

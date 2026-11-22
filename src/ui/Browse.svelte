@@ -80,7 +80,13 @@
     clearTimeout(hoverTimer);
     if (playing === id) { studio.state.live?.stop(); playing = null; }
   }
-  function open(id: string) { studio.state.browse.scroll = scroller?.scrollTop ?? 0; studio.views.open('shader', { id }); }
+  function open(id: string) {
+    studio.state.browse.scroll = scroller?.scrollTop ?? 0;
+    // Hand the hover's current frame and clock to the shader page (see ShaderStage's poster).
+    const snap = studio.state.live?.snapshot(id);
+    studio.state.handoff = snap ? { id, ...snap, at: performance.now() } : null;
+    studio.views.open('shader', { id });
+  }
   function setSort(k: string) { if (k === 'random') st.seed = Math.random().toString(36).slice(2, 8); sort = k; }
   function clear() { q = ''; tag = ''; author = ''; }
 
