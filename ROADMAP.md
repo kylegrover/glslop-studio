@@ -29,7 +29,7 @@ Likely candidates, in the order we expect them:
    parent recorded. Deep links later.
 4. **Show what the agent changed** in the current edit, so the human can keep parts and take over.
 
-## 0.1.2 (on main, not yet released)
+## 0.1.2 (beta: v0.1.2-beta.1, 2026-11-21; Mac + Linux testing next, then stable)
 
 - Motion: live-shader startup splash; the opened shader flies from its hover frame into the stage and
   carries on from the same moment; the grid deals in; softer compile blinks. Setting `motion`
