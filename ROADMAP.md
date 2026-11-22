@@ -29,10 +29,21 @@ Likely candidates, in the order we expect them:
    parent recorded. Deep links later.
 4. **Show what the agent changed** in the current edit, so the human can keep parts and take over.
 
-## Small fixes for 0.1.2 (when there's a reason to ship)
+## 0.1.2 (on main, not yet released)
 
-- Second launch focuses the window but not the search box; focus it.
-- After an in-app update on Windows the app relaunches behind other windows; bring it to the front.
+- Motion: live-shader startup splash; the opened shader flies from its hover frame into the stage and
+  carries on from the same moment; the grid deals in; softer compile blinks. Setting `motion`
+  (auto: full on Windows/macOS, calm on Linux or when the OS asks for reduced motion).
+- Viewing a shader shows no gauges (fps and compile time are on the canvas hover); they appear once
+  you edit, and only then does the app measure compile cost in the background.
+- Fixed: after ~16 edits on one page, the next apply could fail as "broken" (measurements used a
+  fresh WebGL context each time and the webview evicted the editor's).
+- Fixed: relaunch and in-app updates open behind other windows on Windows.
+- Second launch puts the cursor in browse's search box.
+- Opt-in custom title bar (`titleBar: custom`), a prototype; Mac and Linux untested.
+
+## Small fixes, not yet done
+
 - Linux AppImage: after an update the old launcher process stays until quit, and the file keeps its
   old version in its name. Cosmetic; comes from Tauri's AppImage updater.
 - Svelte `state_referenced_locally` warnings (50). Harmless; clean up when touching those files.
