@@ -20,7 +20,7 @@ export function parseISF(src: string): ParseResult {
   }
   let header: any;
   try {
-    header = JSON.parse(m[1]);
+    header = JSON.parse(plainSpaces(m[1]));
   } catch (e) {
     return { ok: false, error: 'ISF JSON header is not valid JSON: ' + (e as Error).message };
   }
@@ -28,4 +28,24 @@ export function parseISF(src: string): ParseResult {
   const inputs: ISFInput[] = Array.isArray(header.INPUTS) ? header.INPUTS : [];
   const passes: ISFPass[] = Array.isArray(header.PASSES) ? header.PASSES : [];
   return { ok: true, isf: { header, body, raw: src, inputs, passes } };
+}
+
+// Unicode spaces JSON doesn't allow between tokens: no-break, figure, narrow no-break, BOM, and
+// the other Zs spaces. They arrive when a header is pasted from a web page, chat or word processor
+// and look exactly like spaces. Outside string literals they can only be layout, so they become
+// plain spaces; inside strings they are content and stay. Valid JSON comes back unchanged.
+const ODD_SPACE = /[\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]/;
+export function plainSpaces(json: string): string {
+  if (!ODD_SPACE.test(json)) return json;
+  let out = '', inStr = false;
+  for (let i = 0; i < json.length; i++) {
+    const c = json[i];
+    if (inStr) {
+      out += c;
+      if (c === '\\') out += json[++i] ?? '';
+      else if (c === '"') inStr = false;
+    } else if (c === '"') { inStr = true; out += c; }
+    else out += ODD_SPACE.test(c) ? ' ' : c;
+  }
+  return out;
 }
