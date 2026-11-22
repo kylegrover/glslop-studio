@@ -85,7 +85,16 @@ const mod: StudioMod = {
       return { ok: true, compileMs, cached };
     }
 
-    studio.state.live = { play, stop, cached: (id: string) => lru.has(id), size: () => lru.size };
+    /** The frame the hover is showing right now for `id`, and its clock, or null if it isn't playing.
+     *  Opening a shader hands this to the stage so the open animation continues from exactly what
+     *  you were looking at. The context keeps its drawing buffer, so this is the last drawn frame. */
+    function snapshot(id: string): { url: string; elapsed: number } | null {
+      if (!active || active.id !== id || !canvas.isConnected) return null;
+      try { return { url: canvas.toDataURL('image/jpeg', 0.92), elapsed: (performance.now() - began) / 1000 }; }
+      catch { return null; }
+    }
+
+    studio.state.live = { play, stop, snapshot, cached: (id: string) => lru.has(id), size: () => lru.size };
     const offs = [
       studio.events.on('view:mounted', stop),
       studio.events.on('corpus:removed', (ids: string[]) => { for (const id of ids) { const e = lru.get(id); if (e) { e.r.dispose(); lru.delete(id); } } }),

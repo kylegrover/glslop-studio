@@ -83,6 +83,29 @@
   <p class="muted">Also: env <code>GLSLOP_ANGLE=d3d11</code> / <code>GLSLOP_NO_GPU_CACHE=1</code> override for one launch.</p>
   {#if env}<pre class="env">{JSON.stringify(env, null, 2)}</pre>{/if}
 
+  <h2>motion</h2>
+  <div class="row">
+    <label>animations
+      <select value={studio.settings.motion ?? 'auto'} onchange={(e) => setSetting('motion', (e.currentTarget as HTMLSelectElement).value)}>
+        <option value="auto">auto ({boot.platform === 'linux' ? 'calm on Linux' : 'full'}; calm if the OS asks for reduced motion)</option>
+        <option value="full">full: live splash, thumbnail → shader morphs, dealt-in grid</option>
+        <option value="calm">calm: short splash, simple fades</option>
+        <option value="off">off</option>
+      </select>
+    </label>
+    <span class="muted">applies at next launch</span>
+  </div>
+
+  <div class="row">
+    <label>title bar
+      <select value={studio.settings.titleBar ?? 'system'} onchange={(e) => setSetting('titleBar', (e.currentTarget as HTMLSelectElement).value)}>
+        <option value="system">system (the OS's own frame)</option>
+        <option value="custom">custom (glslop's own bar{boot.platform === 'macos' ? '; traffic lights stay' : ' and window buttons'}) · prototype</option>
+      </select>
+    </label>
+    <span class="muted">applies at next launch</span>
+  </div>
+
   <h2>shader weight</h2>
   <p class="muted">Under every shader: fps, plus how long a cold compile takes to reach the first frame here (desktop) and in
     Chrome on Windows (browser). glslop.com autoplays shaders whose browser number is under 500 ms.</p>

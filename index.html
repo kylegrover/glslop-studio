@@ -4,9 +4,122 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>glslop studio</title>
+    <!-- Startup splash. Inline on purpose: it draws before the app bundle has even been parsed, so
+         there is never a blank window. main.ts calls window.__splash.done() once the shell is up.
+         Everything here is cheap: one tiny fragment shader (no loops), CSS for the wordmark. -->
+    <style>
+      html, body { background: #0b0b10; }
+      #splash { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; background: #0b0b10; overflow: hidden; }
+      #splash canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; transition: opacity .35s ease-out; }
+      #splash.gl canvas { opacity: 1; }
+      #splash .mark { position: relative; font-family: "Times New Roman", Times, Georgia, serif; font-weight: 700; font-size: clamp(64px, 11vw, 150px); line-height: .9; letter-spacing: -.06em; color: #000; transform: rotate(-5deg); user-select: none;
+        text-shadow: 0 0 0 #46ff1a, 0 0 0 #ff21c7; animation: sp-shadow .7s cubic-bezier(.2,1.6,.4,1) .12s forwards, sp-in .55s cubic-bezier(.2,1.5,.4,1) both; }
+      #splash .mark b { color: #ff21c7; }
+      #splash .mark .gl { position: relative; top: -.16em; z-index: -1; }
+      #splash .tag { position: absolute; left: 50%; bottom: 13vh; transform: translateX(-50%) rotate(-1deg); font: 12px ui-monospace, "Cascadia Code", Consolas, monospace; letter-spacing: .2em; color: #46ff1a; background: #000; padding: 2px 8px; opacity: 0; animation: sp-fade .4s ease-out .45s forwards; white-space: nowrap; }
+      #splash .paper { position: absolute; inset: 0; background: #c4c2b4; transform: translateY(115%) skewY(-6deg); transform-origin: left; }
+      @keyframes sp-in { from { transform: rotate(-14deg) scale(.6); opacity: 0; filter: blur(8px); } to { transform: rotate(-5deg) scale(1); opacity: 1; filter: blur(0); } }
+      @keyframes sp-shadow { to { text-shadow: .045em .045em 0 #46ff1a, .09em .09em 0 #ff21c7; } }
+      @keyframes sp-fade { to { opacity: 1; } }
+      /* Exit: a skewed sheet of the app's paper colour sweeps up, then the whole splash fades. */
+      #splash.out .paper { transition: transform .42s cubic-bezier(.7,0,.2,1); transform: translateY(0) skewY(0); }
+      #splash.out .mark { transition: transform .42s cubic-bezier(.7,0,.2,1), opacity .3s; transform: rotate(-5deg) translateY(-30vh) scale(.5); opacity: 0; }
+      #splash.out .tag { transition: opacity .2s; opacity: 0 !important; }
+      #splash.gone { transition: opacity .22s ease-out; opacity: 0; pointer-events: none; }
+      /* Calm (Linux by default, or reduced motion): no flight, just a quick fade. */
+      #splash.calm .mark { animation: sp-fade .25s ease-out both; text-shadow: .045em .045em 0 #46ff1a, .09em .09em 0 #ff21c7; }
+      #splash.calm.out .paper { transition: none; transform: translateY(115%); }
+      #splash.calm.out .mark { transition: opacity .2s; transform: rotate(-5deg); }
+    </style>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <canvas></canvas>
+      <div class="mark"><span class="gl">gl</span>sl<b>op</b></div>
+      <div class="tag">[ STUDIO · WARMING UP THE GPU ]</div>
+      <div class="paper"></div>
+    </div>
     <div id="app"></div>
+    <script>
+      (function () {
+        var el = document.getElementById('splash');
+        var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+        // Calm on Linux (WebKitGTK repaints are costly) and when the OS asks for reduced motion.
+        // The app's own setting may still override this when done() is called.
+        var calm = reduce || /Linux/.test(navigator.userAgent) && !/Android/.test(navigator.userAgent);
+        if (calm) el.classList.add('calm');
+        var t0 = performance.now(), raf = 0, stopped = false;
+        // A slime/magenta "slop" field: warped value noise, banded, drifting. ~20 ALU ops, no loops,
+        // so it compiles in a few ms even on ANGLE D3D11.
+        var FS = 'precision mediump float;uniform vec2 R;uniform float T;' +
+          'float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}' +
+          'float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+1.),f.x),f.y);}' +
+          'void main(){vec2 uv=(gl_FragCoord.xy-.5*R)/R.y;float t=T*.35;' +
+          'vec2 q=uv*2.2+vec2(n(uv*1.7+t),n(uv*1.7-t+4.))*1.4;' +
+          'float v=n(q+vec2(0,-t*1.6))*.65+n(q*2.3+t)*.35;' +
+          'float b=smoothstep(.02,0.,abs(fract(v*5.-t*.6)-.5)-.18);' +
+          'vec3 c=mix(vec3(.04,.04,.06),vec3(.27,1.,.10),smoothstep(.45,.75,v));' +
+          'c=mix(c,vec3(1.,.13,.78),b*smoothstep(.3,.6,v)*.9);' +
+          'float vg=smoothstep(1.25,.2,length(uv));c*=.35+.65*vg;' +
+          'c*=.92+.08*step(.5,fract(gl_FragCoord.y*.5));' + // scanlines, glslop.com's texture
+          'gl_FragColor=vec4(c,1);}';
+        try {
+          var cv = el.querySelector('canvas');
+          var gl = cv.getContext('webgl', { antialias: false, alpha: false, powerPreference: 'high-performance' });
+          if (gl && !calm) {
+            var sh = function (type, src) { var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+            var pr = gl.createProgram();
+            gl.attachShader(pr, sh(gl.VERTEX_SHADER, 'attribute vec2 p;void main(){gl_Position=vec4(p,0,1);}'));
+            gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS));
+            gl.linkProgram(pr);
+            if (gl.getProgramParameter(pr, gl.LINK_STATUS)) {
+              gl.useProgram(pr);
+              gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+              gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+              gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+              var uR = gl.getUniformLocation(pr, 'R'), uT = gl.getUniformLocation(pr, 'T');
+              var frame = function () {
+                if (stopped) return;
+                // Half resolution: it's a backdrop, and it keeps the first frames cheap.
+                var w = Math.max(1, cv.clientWidth >> 1), hh = Math.max(1, cv.clientHeight >> 1);
+                if (cv.width !== w || cv.height !== hh) { cv.width = w; cv.height = hh; gl.viewport(0, 0, w, hh); }
+                gl.uniform2f(uR, w, hh); gl.uniform1f(uT, (performance.now() - t0) / 1000);
+                gl.drawArrays(gl.TRIANGLES, 0, 3);
+                raf = requestAnimationFrame(frame);
+              };
+              frame();
+              el.classList.add('gl');
+            }
+          }
+        } catch (e) { /* no GL: the wordmark alone is fine */ }
+        window.__splash = {
+          shownAt: t0,
+          /** motion: 'full' | 'calm' | 'off'. Keeps the splash up for a minimum time so it reads as
+           *  intentional rather than a flicker, but never holds a ready app back longer than that. */
+          done: function (motion) {
+            if (!el || el.dataset.leaving) return;
+            el.dataset.leaving = '1';
+            if (motion && motion !== 'full') el.classList.add('calm');
+            var full = !el.classList.contains('calm') && motion !== 'off';
+            var minShown = motion === 'off' ? 0 : full ? 900 : 250;
+            var wait = Math.max(0, minShown - (performance.now() - t0));
+            setTimeout(function () {
+              el.classList.add('out');
+              setTimeout(function () {
+                el.classList.add('gone');
+                document.documentElement.classList.add('app-in');
+                setTimeout(function () {
+                  stopped = true; cancelAnimationFrame(raf);
+                  // Give the GPU context back now rather than whenever GC gets to it.
+                  try { var x = gl && gl.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); } catch (e) {}
+                  el.remove();
+                }, 240);
+              }, full ? 380 : 60);
+            }, wait);
+          },
+        };
+      })();
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

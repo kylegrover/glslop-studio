@@ -25,3 +25,9 @@ html.os-linux body { background-image: none; }
    scrolls at 60 fps. Windows and Mac keep the jitter. */
 html.os-linux .cell, html.os-linux .cell .num { transform: none !important; }
 html.os-linux .cell:hover { transform: translate(-5px, -5px) !important; }
+
+/* View transitions (motion: full; see src/ui/motion.ts). The page crossfades quickly; the opened
+   shader's thumbnail flies into the stage (and back), with a little overshoot. */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .2s; }
+::view-transition-group(glslop-hero) { animation-duration: .42s; animation-timing-function: cubic-bezier(.2, 1.15, .3, 1); z-index: 50; }
+::view-transition-old(glslop-hero), ::view-transition-new(glslop-hero) { animation-duration: .42s; height: 100%; object-fit: cover; }

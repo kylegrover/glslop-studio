@@ -9,6 +9,8 @@ export interface BootInfo {
   gpuCacheDisabled: boolean;
   platform: string;
   bridgeUrl: string | null;
+  /** 'system' | 'custom' (the window has no OS frame, or a transparent one on macOS). */
+  titleBar?: string;
   paths: { config: string; mods: string; workspace: string; cache: string; settings: string; bridgeFile: string; appResources: string };
 }
 

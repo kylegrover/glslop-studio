@@ -10,6 +10,7 @@
   import type { ISFInput } from '@glslop/core/types';
   import IsfCodeArea from '@glslop/ui/IsfCodeArea.svelte';
   import WeightBar from './WeightBar.svelte';
+  import { afterTransition } from './motion';
 
   interface Props {
     studio: Studio;
@@ -20,8 +21,11 @@
     onInputs?: (v: Record<string, any>) => void;
     /** Expose the source being edited (scratch editor saves it). */
     onSource?: (src: string) => void;
+    /** Editing from the start (the editor view). Otherwise casual viewing: fps only, and the cost
+     *  gauges (which compile the shader twice more in the background) wait until the first edit. */
+    editor?: boolean;
   }
-  let { studio, isf, shaderId = null, filename = 'shader.fs', onCompiled, onInputs, onSource }: Props = $props();
+  let { studio, isf, shaderId = null, filename = 'shader.fs', onCompiled, onInputs, onSource, editor = false }: Props = $props();
 
   const HEADER_RE = /\/\*\s*(\{[\s\S]*?\})\s*\*\//;
   function bodyStartIndex(src: string): number {
@@ -37,8 +41,28 @@
   let applied = $state(isf);
   let inputs = $state<ISFInput[]>(parseInputs(isf));
   const dirty = $derived(source !== applied);
+  // svelte-ignore state_referenced_locally
+  let editing = $state(editor);
+  $effect(() => { if (dirty && !editing) { editing = true; if (compileOk) scheduleWeight(applied, 0); } });
   let compileErr = $state<string | null>(null);
   let compileOk = $state(true);
+  // A short visual beat on each compile after the first: a slime ring when it works, a shake when not.
+  let pop = $state<'ok' | 'bad' | null>(null), popTimer: ReturnType<typeof setTimeout> | undefined, compiles = 0;
+  function beat(kind: 'ok' | 'bad') {
+    if (compiles++ === 0) return;
+    pop = null; clearTimeout(popTimer);
+    requestAnimationFrame(() => { pop = kind; popTimer = setTimeout(() => (pop = null), 650); });
+  }
+  // Shown until the first live frame, so the open animation never flies into a black box: the
+  // hover's last frame when you opened it from a playing card (and the stage carries on from the
+  // same moment), otherwise the cached thumbnail. Then the live shader fades in over it.
+  // svelte-ignore state_referenced_locally
+  const handoff = shaderId && studio.state.handoff?.id === shaderId && performance.now() - studio.state.handoff.at < 3000 ? studio.state.handoff : null;
+  // svelte-ignore state_referenced_locally
+  const poster: string | null = handoff?.url ?? (shaderId ? studio.state.thumbs?.cached(shaderId) ?? null : null);
+  // True once a compiled program has actually drawn. compileOk starts true before anything has
+  // compiled, so it can't be the signal (the poster faded early and left a black canvas).
+  let firstFrame = $state(false), drawable = false;
   let compiling = $state(false);
   let compileMs = $state<number | null>(null);
   let paused = $state(false);
@@ -76,7 +100,8 @@
   let wrapEl: HTMLDivElement;
   let canvasEl: HTMLCanvasElement;
   let renderer: GlslopRenderer | null = null;
-  let raf = 0, began = performance.now(), pausedAt = 0;
+  // svelte-ignore state_referenced_locally
+  let raf = 0, began = performance.now() - (handoff ? (handoff.elapsed * 1000 + (performance.now() - handoff.at)) : 0), pausedAt = 0;
   let codeArea: { scrollToChar: (i: number, focus?: boolean) => void } | undefined;
 
   const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
@@ -128,6 +153,7 @@
 
   async function compile(src: string): Promise<boolean> {
     if (!renderer) return false;
+    if (renderer.isContextLost()) { compileErr = 'the GPU dropped this view (driver reset); it comes back by itself in a moment'; return false; }
     compiling = true;
     await new Promise((r) => setTimeout(r, 0)); // paint "compiling…" first: Vulkan compiles synchronously
     const t0 = performance.now();
@@ -137,9 +163,9 @@
     if (res.superseded) return false;
     onCompiled?.(compileMs, res.compileOk);
     studio.events.emit('viewer:compiled', { id: shaderId, ok: res.compileOk, compileMs, errors: res.errors, backend: studio.host.boot.angleBackend });
-    if (!res.compileOk) { compileErr = res.errors.join('\n') || 'compile failed'; compileOk = false; return false; }
-    compileErr = null; compileOk = true;
-    scheduleWeight(src);
+    if (!res.compileOk) { compileErr = res.errors.join('\n') || 'compile failed'; compileOk = false; beat('bad'); return false; }
+    compileErr = null; compileOk = true; drawable = true; beat('ok');
+    if (editing) scheduleWeight(src);
     return true;
   }
   function scheduleWeight(src: string, delay = 700) {
@@ -193,12 +219,14 @@
   onMount(() => {
     renderer = new GlslopRenderer(canvasEl);
     resize();
-    compile(applied).then((ok) => { if (ok) seedValues(false); });
+    // Let the open animation land first: on D3D11 a heavy compile can freeze the page for seconds.
+    afterTransition().then(() => compile(applied)).then((ok) => { if (ok) seedValues(false); });
     let fpsN = 0, fpsT = performance.now();
     const loop = () => {
       raf = requestAnimationFrame(loop);
       if (!renderer || paused || !compileOk && applied === source && compileErr) return;
       renderer.draw((performance.now() - began) / 1000);
+      if (!firstFrame && drawable) firstFrame = true;
       fpsN++;
       const now = performance.now();
       if (now - fpsT > 500) { fps = Math.round((fpsN * 1000) / (now - fpsT)); fpsN = 0; fpsT = now; }
@@ -209,6 +237,16 @@
     document.addEventListener('fullscreenchange', onFs);
     const onVis = () => { if (document.hidden && !paused) togglePlay(); };
     document.addEventListener('visibilitychange', onVis);
+    // If the GPU process drops this context (driver reset, too many contexts), let it come back and
+    // rebuild, instead of reporting the next apply as a broken shader.
+    const onLost = (e: Event) => { e.preventDefault(); };
+    const onRestored = () => {
+      try { renderer?.dispose(); } catch { /* already gone */ }
+      renderer = new GlslopRenderer(canvasEl); resize();
+      compile(applied).then((ok) => { if (ok) pushAll(); });
+    };
+    canvasEl.addEventListener('webglcontextlost', onLost);
+    canvasEl.addEventListener('webglcontextrestored', onRestored);
     const offExport = [
       studio.events.on('export:start', () => { if (!paused) togglePlay(); }),
     ];
@@ -223,6 +261,7 @@
           throw new Error('the human has unapplied edits in the editor. Read them with viewer.getSource and merge, or pass force:true to replace them (viewer.undo brings them back).');
         }
         if (src !== source) history = [...history, { source, from, at: Date.now() }].slice(-HISTORY_MAX);
+        editing = true;
         source = src; lastOutside = from === 'you' ? null : src; await apply(true);
         agentFlash = `updated by ${from} · ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
         clearTimeout(agentTimer); agentTimer = setTimeout(() => (agentFlash = null), 6000);
@@ -250,6 +289,7 @@
       if (studio.state.viewer === handle) studio.state.viewer = null;
       cancelAnimationFrame(raf); ro.disconnect();
       document.removeEventListener('fullscreenchange', onFs); document.removeEventListener('visibilitychange', onVis);
+      canvasEl.removeEventListener('webglcontextlost', onLost); canvasEl.removeEventListener('webglcontextrestored', onRestored);
       offExport.forEach((o) => o());
       renderer?.dispose(); renderer = null;
     };
@@ -282,8 +322,9 @@
 
 <div class="studio" class:expanded={codeExpanded}>
   <section class="col col-canvas">
-    <div class="stage" class:fs={isFs} bind:this={wrapEl}>
+    <div class="stage" class:fs={isFs} class:pop-ok={pop === 'ok'} class:pop-bad={pop === 'bad'} bind:this={wrapEl} data-hero={shaderId}>
       <canvas bind:this={canvasEl} class:draggable={!!pointInput()} onpointerdown={pointerDown} onpointermove={pointerMove} onpointerup={pointerUp} onpointercancel={pointerUp}></canvas>
+      {#if poster}<img class="poster" class:gone={firstFrame} src={poster} alt="" draggable="false" />{/if}
       {#if compiling}<div class="badge-live">compiling…</div>{/if}
       <div class="overlay" class:show={isFs} role="group" onmouseenter={() => (panelOpen = true)} onmouseleave={() => { if (!keepOpen) panelOpen = false; }}>
         <div class="ctl-left">
@@ -302,7 +343,9 @@
         {#if !panelOpen && !keepOpen}<div class="fs-hotzone" onmouseenter={() => (panelOpen = true)} role="presentation"></div>{/if}
       {/if}
     </div>
-    <WeightBar {studio} {fps} desktop={wDesktop} browser={wBrowser} busy={wBusy} />
+    <!-- Viewing: nothing here; the canvas's hover overlay already shows fps and compile time. The
+         gauges (fps + compile cost) appear once you start editing. -->
+    {#if editing}<WeightBar {studio} {fps} desktop={wDesktop} browser={wBrowser} busy={wBusy} />{/if}
   </section>
 
   <section class="col col-params" class:rail={codeExpanded}>
@@ -386,9 +429,13 @@
   .studio { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(0, 0.9fr) minmax(0, 1.6fr); gap: 14px; align-items: stretch; }
   .studio.expanded { grid-template-columns: minmax(0, 1.8fr) 38px minmax(0, 2.5fr); }
   .col { min-width: 0; }
-  .stage { position: relative; aspect-ratio: 1 / 1; width: 100%; max-height: min(78vh, 760px); background: #000; overflow: hidden; border: 2px solid var(--line); box-shadow: 6px 6px 0 var(--line); }
+  .stage { position: relative; aspect-ratio: 1 / 1; width: 100%; max-height: min(78vh, 760px); background: #000; overflow: hidden; border: 2px solid var(--line); box-shadow: var(--stage-shadow); --stage-shadow: 6px 6px 0 var(--line);
+    /* Its shadow is 6px where the panels' is 3px: sit 3px up-left so the shadow edges line up. */
+    top: -3px; left: -3px; }
   .stage canvas { width: 100%; height: 100%; display: block; object-fit: cover; touch-action: none; }
   .stage canvas.draggable { cursor: crosshair; }
+  .poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; z-index: 1; transition: opacity .25s ease-out; }
+  .poster.gone { opacity: 0; }
   .badge-live { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.7); color: var(--slime); font-size: 11px; padding: 2px 6px; }
   .overlay { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px; background: linear-gradient(to top, rgba(0,0,0,.6), rgba(0,0,0,0)); opacity: 0; transform: translateY(8px); transition: opacity .18s ease, transform .18s ease; pointer-events: none; }
   .stage:hover .overlay, .overlay.show, .overlay:focus-within { opacity: 1; transform: none; pointer-events: auto; }
@@ -397,7 +444,7 @@
   .ctl { font-family: var(--mono); font-size: 14px; line-height: 1; padding: 4px 9px; cursor: pointer; color: #fff; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.4); }
   .ctl:hover { background: var(--magenta); border-color: var(--magenta); }
   .fs-keep { display: inline-flex; align-items: center; gap: 5px; color: #eee; font-size: 12px; }
-  .stage:fullscreen { width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; border: 0; box-shadow: none; }
+  .stage:fullscreen { width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; border: 0; box-shadow: none; top: 0; left: 0; animation: none !important; }
   .fs-panel { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 8px 14px 12px; max-height: 44vh; overflow: auto; color: #eee; background: rgba(10,10,14,.62); backdrop-filter: blur(8px); border-top: 1px solid rgba(255,255,255,.18); transition: transform .22s ease, opacity .22s ease; }
   .fs-panel.fs-hidden { transform: translateY(100%); opacity: 0; pointer-events: none; }
   .fs-sliders { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2px 18px; }
@@ -427,6 +474,14 @@
   .slider-row select { font-family: var(--mono); font-size: 12px; background: #fff; border: 2px inset #999; }
   .agent-badge { background: var(--slime); color: #000; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; white-space: nowrap; }
   .col-code.agent-flash { animation: agentflash 1.6s ease-out; }
+  :global(html:not([data-motion='off'])) .stage.pop-ok { animation: pop-ok .6s ease-out; }
+  :global(html[data-motion='full']) .stage.pop-bad { animation: pop-bad .3s ease-out; }
+  :global(html[data-motion='calm']) .stage.pop-bad { box-shadow: 0 0 0 2px var(--warn), var(--stage-shadow); }
+  /* Each frame keeps the stage's own hard shadow underneath the ring. */
+  @keyframes pop-ok { 0% { box-shadow: 0 0 0 0 rgba(70, 255, 26, .7), var(--stage-shadow); } 30% { box-shadow: 0 0 0 3px rgba(70, 255, 26, .55), var(--stage-shadow); } 100% { box-shadow: 0 0 0 7px rgba(70, 255, 26, 0), var(--stage-shadow); } }
+  @keyframes pop-bad { 20%, 60% { translate: -2px 0; } 40%, 80% { translate: 2px 0; } 0% { box-shadow: 0 0 0 2px rgba(255, 59, 31, .8), var(--stage-shadow); } 100% { box-shadow: 0 0 0 2px rgba(255, 59, 31, 0), var(--stage-shadow); } }
+  :global(html:not([data-motion='off'])) .compile-strip { animation: strip-in .25s ease-out; }
+  @keyframes strip-in { from { opacity: 0; translate: 0 -6px; } }
   @keyframes agentflash { 0% { box-shadow: 0 0 0 4px var(--slime), 3px 3px 0 rgba(0,0,0,.25); } 100% { box-shadow: 0 0 0 0 transparent, 3px 3px 0 rgba(0,0,0,.25); } }
   .undo-btn { all: unset; cursor: pointer; font-size: 10px; text-transform: uppercase; text-decoration: underline; }
   .dirty { background: var(--magenta); color: #fff; padding: 0 5px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid #000; }

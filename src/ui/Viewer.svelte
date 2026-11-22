@@ -134,7 +134,7 @@ void main(){
   {/if}
   {#if initial !== null}
     {#key key}
-      <ShaderStage {studio} isf={initial} filename={shaderFileName(title)}
+      <ShaderStage {studio} isf={initial} filename={shaderFileName(title)} editor
         onCompiled={(ms: number) => (compileMs = ms)} onInputs={(v: Record<string, any>) => (liveInputs = v)} {onSource} />
     {/key}
   {/if}

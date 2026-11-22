@@ -80,7 +80,13 @@
     clearTimeout(hoverTimer);
     if (playing === id) { studio.state.live?.stop(); playing = null; }
   }
-  function open(id: string) { studio.state.browse.scroll = scroller?.scrollTop ?? 0; studio.views.open('shader', { id }); }
+  function open(id: string) {
+    studio.state.browse.scroll = scroller?.scrollTop ?? 0;
+    // Hand the hover's current frame and clock to the shader page (see ShaderStage's poster).
+    const snap = studio.state.live?.snapshot(id);
+    studio.state.handoff = snap ? { id, ...snap, at: performance.now() } : null;
+    studio.views.open('shader', { id });
+  }
   function setSort(k: string) { if (k === 'random') st.seed = Math.random().toString(36).slice(2, 8); sort = k; }
   function clear() { q = ''; tag = ''; author = ''; }
 
@@ -134,9 +140,9 @@
   {/if}
 
   <div class="grid" bind:this={gridEl}>
-    {#each rows as s (s.id)}
+    {#each rows as s, i (s.id)}
       {@const l = s.local?.[backend]}
-      <a class="cell" href={'#' + s.id} style={jitterStyle(cellJitter(s.id))} data-id={s.id}
+      <a class="cell" href={'#' + s.id} style="{jitterStyle(cellJitter(s.id))};--i:{Math.min(i, 30)}" data-id={s.id}
         onclick={(e) => { e.preventDefault(); open(s.id); }}
         onmouseenter={(e) => enter(s.id, e)} onmouseleave={() => leave(s.id)}>
         <span class="corner">#{s.id}</span>
@@ -146,7 +152,7 @@
             {#if l}<span class="chip {l.ok ? speedClass(l.compile_ms) : 'bad'}" title="measured here on {backend}">{fmtMs(l.compile_ms)}</span>{/if}
           </span>
         {/if}
-        <div class="frame" data-frame>
+        <div class="frame" data-frame data-hero={s.id}>
           {#if thumbs[s.id]}
             <img src={thumbs[s.id]} alt={s.title} draggable="false" />
           {:else if failed[s.id]}
@@ -188,6 +194,13 @@
   .cell { cursor: pointer; }
   .cell .corner { z-index: 2; }
   .cell .frame { position: relative; }
+  /* Cells deal in on first show (full motion only): opacity + a small drop, staggered by index. Only
+     the first 30 get a delay, so a long grid never waits. */
+  :global(html[data-motion='full']) .cell { animation: deal .42s cubic-bezier(.2,1.4,.4,1) backwards; animation-delay: calc(var(--i, 0) * 18ms); }
+  @keyframes deal { from { opacity: 0; translate: 0 14px; } }
+  /* Thumbnails fade up when they arrive instead of popping. */
+  :global(html:not([data-motion='off'])) .frame img { animation: thumb-in .3s ease-out; }
+  @keyframes thumb-in { from { opacity: 0; filter: saturate(0) brightness(1.6); } }
   .ph { width: 100%; height: 100%; background: repeating-linear-gradient(135deg, #0d0d12 0 14px, #16161d 14px 28px); }
   .ph.err { display: grid; place-items: center; color: var(--warn); font-size: 12px; background: #111; }
   .times { position: absolute; top: -10px; right: -8px; z-index: 2; display: flex; gap: 2px; }
