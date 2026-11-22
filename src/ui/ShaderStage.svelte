@@ -60,7 +60,9 @@
   const handoff = shaderId && studio.state.handoff?.id === shaderId && performance.now() - studio.state.handoff.at < 3000 ? studio.state.handoff : null;
   // svelte-ignore state_referenced_locally
   const poster: string | null = handoff?.url ?? (shaderId ? studio.state.thumbs?.cached(shaderId) ?? null : null);
-  let firstFrame = $state(false);
+  // True once a compiled program has actually drawn. compileOk starts true before anything has
+  // compiled, so it can't be the signal (the poster faded early and left a black canvas).
+  let firstFrame = $state(false), drawable = false;
   let compiling = $state(false);
   let compileMs = $state<number | null>(null);
   let paused = $state(false);
@@ -162,7 +164,7 @@
     onCompiled?.(compileMs, res.compileOk);
     studio.events.emit('viewer:compiled', { id: shaderId, ok: res.compileOk, compileMs, errors: res.errors, backend: studio.host.boot.angleBackend });
     if (!res.compileOk) { compileErr = res.errors.join('\n') || 'compile failed'; compileOk = false; beat('bad'); return false; }
-    compileErr = null; compileOk = true; beat('ok');
+    compileErr = null; compileOk = true; drawable = true; beat('ok');
     if (editing) scheduleWeight(src);
     return true;
   }
@@ -224,7 +226,7 @@
       raf = requestAnimationFrame(loop);
       if (!renderer || paused || !compileOk && applied === source && compileErr) return;
       renderer.draw((performance.now() - began) / 1000);
-      if (!firstFrame && compileOk && applied === source) firstFrame = true;
+      if (!firstFrame && drawable) firstFrame = true;
       fpsN++;
       const now = performance.now();
       if (now - fpsT > 500) { fps = Math.round((fpsN * 1000) / (now - fpsT)); fpsN = 0; fpsT = now; }
