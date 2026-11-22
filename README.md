@@ -45,7 +45,7 @@ macOS (Metal) and Linux (GL) ignore the ANGLE switch.
 - **new**: glslop's highlighted editor with hot reload, the translated (driver-side) source, and the
   compile **advisor**, which warns when a shader will be slow for glslop.com visitors.
 - **account**: sign in with glslop and publish. Publishing always asks you first, in a window that shows exactly what will be sent.
-- **bench**: compile the corpus on the current backend and compare it with the D3D11 reference.
+- **bench** (Settings → shader weight, or Ctrl+4): compile the corpus on the current backend and compare it with the D3D11 reference.
 - **settings**: backend, paths, mods (enable/disable/reload and errors), and the tool list.
 
 ## Agents

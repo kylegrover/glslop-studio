@@ -73,6 +73,11 @@ try {
   check('a closed editor no longer answers viewer calls', st.open === false && (await source()) === null, JSON.stringify(st));
   const backBtn = await ev(`return !!document.querySelector('nav.main button[title^="back"]')`);
   check('after moving between views, the header shows the ← back button', backBtn === true);
+  const nav = await ev(`return [...document.querySelectorAll('nav.main button')].map(b => b.textContent.trim())`);
+  check('bench is not in the header nav', !nav.includes('bench'), JSON.stringify(nav));
+  await call('ui.openView', { id: 'settings' }); await sleep(300);
+  const opened = await ev(`const b = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'compile bench'); if (!b) return 'no button'; b.click(); await new Promise(r => setTimeout(r, 400)); return studio.state.activeView`);
+  check('Settings → "compile bench" opens the bench', opened === 'bench', opened);
 
   // ------------------------------------------------------------------------------------------------
   await call('viewer.open', { isf: V1, title: 'guardtest' });

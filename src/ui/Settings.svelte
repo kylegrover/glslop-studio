@@ -114,6 +114,10 @@
       measure the browser number for real (Windows: a hidden background window running Chrome's D3D11 compiler,
       started on first use, closed after 5 idle minutes). Off, or on Mac/Linux: a static estimate from the source.</label>
   </div>
+  <div class="row">
+    <button onclick={() => studio.views.open('bench')}>compile bench</button>
+    <span class="muted">compile every shader on this backend and compare with the D3D11 reference (Ctrl+4)</span>
+  </div>
 
   <h2>data + caching</h2>
   {#if studio.state.thumbMode?.worker === false}

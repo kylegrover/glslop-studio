@@ -83,7 +83,7 @@ It is also `window.studio`, so devtools (right-click → Inspect in a dev build)
 ## Recipes
 
 - **Replace a view:** `studio.views.add({ id: 'browse', title: 'browse', mount(el) { ... } })`.
-- **Hide a view:** `studio.views.wrap('bench', v => ({ ...v, hidden: true }))`.
+- **Hide a view:** `studio.views.wrap('glsl', v => ({ ...v, hidden: true }))`.
 - **Remove a core feature:** add `"core:bench"` to `settings.json` → `disabledMods`. Core mod ids are
   `core:corpus`, `core:gl`, `core:thumbs`, `core:live`, `core:bench`, `core:advisor`, `core:views`.
 - **Point at another glslop:** `"glslopBase": "http://127.0.0.1:4399"` in settings.json, then `corpus.fetch`.

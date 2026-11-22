@@ -22,7 +22,8 @@ const mod: StudioMod = {
     studio.views.add({ id: 'browse', title: 'browse', order: 10, mount: svelteView(Browse) });
     studio.views.add({ id: 'viewer', title: 'new', order: 20, mount: svelteView(Viewer) });
     studio.views.add({ id: 'glsl', title: 'glsl', order: 30, mount: svelteView(Glsl) });
-    studio.views.add({ id: 'bench', title: 'bench', order: 40, mount: svelteView(Bench) });
+    // Not in the nav: opened from Settings → shader weight (or Ctrl+4, or ui.openView).
+    studio.views.add({ id: 'bench', title: 'bench', order: 40, hidden: true, mount: svelteView(Bench) });
     // A shader's detail page (glslop.com /shader/[id]); reached from browse, not the nav.
     studio.views.add({ id: 'shader', title: 'shader', hidden: true, mount: svelteView(ShaderPage) });
     studio.views.add({ id: 'settings', title: 'settings', order: 90, mount: svelteView(Settings) });
