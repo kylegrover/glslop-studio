@@ -37,6 +37,9 @@ struct BootSettings {
     /// Extra raw WebView2 browser arguments, appended verbatim.
     extra_browser_args: Option<String>,
     bridge_port: Option<u16>,
+    /// "system" (default) or "custom": the app draws its own title bar (Windows/Linux: no OS frame,
+    /// our own buttons; macOS: transparent title bar, traffic lights over our header).
+    title_bar: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -60,6 +63,8 @@ struct BootInfo {
     platform: String,
     bridge_url: Option<String>,
     paths: Paths,
+    /// "system" | "custom", as the window was actually built.
+    title_bar: String,
 }
 
 struct Pending(Mutex<HashMap<String, Sender<Value>>>);
@@ -524,6 +529,7 @@ pub fn run() {
     let settings = read_settings();
     let backend = chosen_backend(&settings);
     let (args, no_cache) = browser_args(&backend, &settings);
+    let custom_bar = settings.title_bar.as_deref() == Some("custom");
     let pending = Arc::new(Pending(Mutex::new(HashMap::new())));
     let ready = Arc::new(BridgeReady::default());
     let ready_on_load = ready.clone();
@@ -544,6 +550,8 @@ pub fn run() {
                 let _ = w.set_focus();
                 #[cfg(target_os = "linux")]
                 linux_present(&w);
+                // The window is in front; tell the page so it can put the cursor somewhere useful.
+                let _ = w.emit("app:reopened", ());
             }
         }));
     }
@@ -606,6 +614,7 @@ pub fn run() {
                 platform: std::env::consts::OS.into(),
                 bridge_url,
                 paths: p,
+                title_bar: if custom_bar { "custom" } else { "system" }.into(),
             })));
 
             let b = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
@@ -624,6 +633,12 @@ pub fn run() {
                 let tag = format!("{backend}{}", if no_cache { "-nocache" } else { "" });
                 b.additional_browser_args(&args).data_directory(config_dir().join("webview").join(tag))
             };
+            // Custom title bar: macOS keeps its traffic lights over a transparent bar; elsewhere the OS
+            // frame goes and the page draws the bar and buttons (src/ui/TitleBar.svelte).
+            #[cfg(target_os = "macos")]
+            let b = if custom_bar { b.title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true) } else { b };
+            #[cfg(not(target_os = "macos"))]
+            let b = if custom_bar { b.decorations(false) } else { b };
             let w = b.build()?;
             // Come up in front, also after a relaunch/update (see allow_foreground).
             if std::env::var_os("GLSLOP_STUDIO_HIDDEN").is_none() {

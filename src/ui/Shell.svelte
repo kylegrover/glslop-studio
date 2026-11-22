@@ -5,8 +5,11 @@
   import { onMount } from 'svelte';
   import type { Studio, View } from '../studio/api';
   import { transitionViews } from './motion';
+  import TitleBar from './TitleBar.svelte';
 
   let { studio }: { studio: Studio } = $props();
+  // svelte-ignore state_referenced_locally
+  const customBar = studio.host.kind === 'tauri' && studio.host.boot.titleBar === 'custom';
   let views = $state<View[]>([]);
   let active = $state<string>('browse');
   let params = $state<Record<string, unknown>>({});
@@ -81,11 +84,22 @@
     window.addEventListener('mouseup', onMouse);
     mount(studio.settings.startView ?? 'browse', {}, false);
     studio.state.back = back;
-    return () => { offs.forEach((o) => o()); window.removeEventListener('keydown', onKey); window.removeEventListener('mouseup', onMouse); };
+    // Second launch: the window comes to the front (Rust). Put the cursor where typing makes sense:
+    // the search box on browse, unless something on the page already has focus.
+    let offReopen: (() => void) | undefined;
+    studio.host.listen?.('app:reopened', () => {
+      const a = document.activeElement as HTMLElement | null;
+      if (a && a !== document.body && a.closest('input,textarea,select,[contenteditable]')) return;
+      const search = slot?.querySelector<HTMLInputElement>('input[type=text]');
+      if (search) { search.focus(); search.select(); }
+      studio.events.emit('app:reopened', {});
+    }).then((off) => (offReopen = off));
+    return () => { offReopen?.(); offs.forEach((o) => o()); window.removeEventListener('keydown', onKey); window.removeEventListener('mouseup', onMouse); };
   });
 </script>
 
-<div class="shell">
+<div class="shell" class:custom-bar={customBar}>
+  {#if customBar}<TitleBar {studio} />{/if}
   <header class="site-head">
     <div class="headwrap">
       <div>
@@ -117,6 +131,7 @@
 
 <style>
   .shell { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+  .shell.custom-bar { grid-template-rows: auto auto 1fr auto; }
   .site-head { border-bottom: 6px double var(--line); background: repeating-linear-gradient(137deg, var(--paper) 0 14px, #dedcce 14px 28px); transform: rotate(0.3deg); position: relative; z-index: 40; margin-bottom: 4px; }
   .headwrap { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 6px; padding: 8px 18px 6px; max-width: 1600px; margin: 0 auto; }
   .wordmark { font-family: var(--display); font-weight: 700; font-size: 38px; line-height: .9; letter-spacing: -2px; color: #000; text-shadow: 3px 3px 0 var(--slime), 6px 6px 0 var(--magenta); display: inline-block; transform: rotate(-5deg); background: none; border: none; padding: 0; cursor: pointer; }

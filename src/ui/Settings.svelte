@@ -96,6 +96,16 @@
     <span class="muted">applies at next launch</span>
   </div>
 
+  <div class="row">
+    <label>title bar
+      <select value={studio.settings.titleBar ?? 'system'} onchange={(e) => setSetting('titleBar', (e.currentTarget as HTMLSelectElement).value)}>
+        <option value="system">system (the OS's own frame)</option>
+        <option value="custom">custom (glslop's own bar{boot.platform === 'macos' ? '; traffic lights stay' : ' and window buttons'}) · prototype</option>
+      </select>
+    </label>
+    <span class="muted">applies at next launch</span>
+  </div>
+
   <h2>shader weight</h2>
   <p class="muted">Under every shader: fps, plus how long a cold compile takes to reach the first frame here (desktop) and in
     Chrome on Windows (browser). glslop.com autoplays shaders whose browser number is under 500 ms.</p>
